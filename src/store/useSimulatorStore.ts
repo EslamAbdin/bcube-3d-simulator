@@ -18,6 +18,28 @@ import {
 import type { SignalLevel } from '../engine/gateEvaluators';
 
 export type CameraMode = '3d' | '2d';
+export type DrawerTab = 'truth-table' | 'challenges' | null;
+export type PerformanceMode = 'high' | 'eco';
+
+const PERF_MODE_STORAGE_KEY = 'bcube_perf_mode_v1';
+
+function readInitialPerformanceMode(): PerformanceMode {
+  if (typeof window === 'undefined') return 'high';
+  try {
+    return window.localStorage.getItem(PERF_MODE_STORAGE_KEY) === 'eco' ? 'eco' : 'high';
+  } catch {
+    return 'high';
+  }
+}
+
+function persistPerformanceMode(mode: PerformanceMode): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(PERF_MODE_STORAGE_KEY, mode);
+  } catch {
+    // Ignore storage quota/privacy mode failures
+  }
+}
 
 export const WIRE_COLORS = [
   { name: 'Red', hex: '#ef4444' },
@@ -74,6 +96,10 @@ interface SimulatorState {
   selectedWireId: string | null;
   activePresetInfo: ActivePresetInfo | null;
   statusToast: StatusToast | null;
+  signalFlowEnabled: boolean;
+  activeDrawerTab: DrawerTab;
+  helpModalOpen: boolean;
+  performanceMode: PerformanceMode;
 
   // Derived simulation state
   netStates: Record<string, SignalLevel>;
@@ -103,6 +129,12 @@ interface SimulatorState {
   setHoveredSocketId: (socketId: string | null) => void;
   setHoveredStandbyModuleId: (moduleId: string | null) => void;
   resetInputs: () => void;
+  applyInputVector: (inputBits: Record<string, 0 | 1>) => void;
+  toggleSignalFlow: () => void;
+  setActiveDrawerTab: (tab: DrawerTab) => void;
+  toggleDrawerTab: (tab: 'truth-table' | 'challenges') => void;
+  setHelpModalOpen: (open: boolean) => void;
+  togglePerformanceMode: () => void;
   loadPreset: (presetId: string) => boolean;
   dismissPresetInfo: () => void;
   showToast: (message: string, kind?: StatusToast['kind']) => void;
@@ -215,6 +247,10 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   selectedWireId: null,
   activePresetInfo: null,
   statusToast: null,
+  signalFlowEnabled: false,
+  activeDrawerTab: null,
+  helpModalOpen: false,
+  performanceMode: readInitialPerformanceMode(),
   ...initialDerived,
 
   toggleSlideSwitch: (switchId) => {
@@ -416,6 +452,41 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       ...computeDerived(switches, buttons, s.wires, s.ttlFloatingIsHigh),
     });
   },
+
+  applyInputVector: (inputBits) => {
+    const s = get();
+    const switches = { ...s.switches };
+    const buttons = { ...s.buttons };
+    const latchedButtons = { ...s.latchedButtons };
+    for (const [id, bit] of Object.entries(inputBits)) {
+      if (id in switches) {
+        switches[id] = bit === 1;
+      } else if (id in buttons) {
+        const pressed = bit === 0;
+        buttons[id] = pressed;
+        latchedButtons[id] = pressed;
+      }
+    }
+    set({
+      switches,
+      buttons,
+      latchedButtons,
+      ...computeDerived(switches, buttons, s.wires, s.ttlFloatingIsHigh),
+    });
+  },
+
+  toggleSignalFlow: () => set((s) => ({ signalFlowEnabled: !s.signalFlowEnabled })),
+  setActiveDrawerTab: (tab) => set({ activeDrawerTab: tab }),
+  toggleDrawerTab: (tab) =>
+    set((s) => ({ activeDrawerTab: s.activeDrawerTab === tab ? null : tab })),
+  setHelpModalOpen: (open) => set({ helpModalOpen: open }),
+
+  togglePerformanceMode: () =>
+    set((s) => {
+      const next: PerformanceMode = s.performanceMode === 'high' ? 'eco' : 'high';
+      persistPerformanceMode(next);
+      return { performanceMode: next };
+    }),
 
   loadPreset: (presetId) => {
     if (presetId === 'empty') {

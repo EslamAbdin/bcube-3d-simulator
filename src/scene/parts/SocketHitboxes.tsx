@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
@@ -50,7 +50,7 @@ function resolvePickedSocket(
   return picked;
 }
 
-function ActiveSocketHitboxes() {
+const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
   const colliderRef = useRef<THREE.InstancedMesh>(null);
   const primaryRingRef = useRef<THREE.Mesh>(null);
   const originRingRef = useRef<THREE.Mesh>(null);
@@ -204,9 +204,9 @@ function ActiveSocketHitboxes() {
       )}
     </group>
   );
-}
+});
 
-function StandbyHoverZones() {
+const StandbyHoverZones = memo(function StandbyHoverZones() {
   const standbyModules = useMemo(
     () => ALL_MODULES.filter((m) => m.status === 'standby'),
     []
@@ -257,17 +257,17 @@ function StandbyHoverZones() {
       })}
     </group>
   );
-}
+});
 
 /**
  * Combines invisible active-socket raycast hitboxes (hover + click-to-wire)
  * and standby module hover zones for bottom-HUD inspection.
  */
-export function SocketHitboxes() {
+export const SocketHitboxes = memo(function SocketHitboxes() {
   return (
     <group name="socket-and-standby-hitboxes">
       <ActiveSocketHitboxes />
       <StandbyHoverZones />
     </group>
   );
-}
+});

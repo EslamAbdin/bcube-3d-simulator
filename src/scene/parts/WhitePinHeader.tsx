@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { ALL_SOCKETS, BOARD_DIMENSIONS } from '../../schema/boardSchema';
+import { useSimulatorStore } from '../../store/useSimulatorStore';
 
 interface HeaderHousing {
   key: string;
@@ -67,7 +68,7 @@ function buildHeaderHousings(): HeaderHousing[] {
         yTop,
         zCenter: (zMin + zMax) / 2,
         width: housingWidth,
-        depth: zMax - zMin + 0.44,
+        depth: zMax - zMin + 0.34,
       });
       cluster = [];
     };
@@ -85,65 +86,40 @@ function buildHeaderHousings(): HeaderHousing[] {
   return housings;
 }
 
+const SHARED_ACTIVE_CAVITY_GEO = new THREE.BoxGeometry(0.13, 0.008, 0.13);
+const SHARED_ACTIVE_PIN_GEO = new THREE.BoxGeometry(0.045, 0.004, 0.045);
+const SHARED_PLASTIC_MAT = new THREE.MeshStandardMaterial({
+  color: '#eef2f6',
+  roughness: 0.42,
+  metalness: 0.04,
+});
+const SHARED_RIM_MAT = new THREE.MeshStandardMaterial({
+  color: '#dbe4ef',
+  roughness: 0.5,
+  metalness: 0.05,
+});
+const SHARED_CAVITY_MAT = new THREE.MeshStandardMaterial({
+  color: '#0f172a',
+  roughness: 0.85,
+  metalness: 0.1,
+});
+const SHARED_CONTACT_PIN_MAT = new THREE.MeshStandardMaterial({
+  color: '#cbd5e1',
+  roughness: 0.25,
+  metalness: 0.85,
+});
+const SHARED_STANDBY_CAVITY_GEO = new THREE.BoxGeometry(0.11, 0.008, 0.11);
+
 /**
  * Renders all active v1 white dual-hole female headers from ALL_SOCKETS
  * using instanced socket cavities and metallic contact pins.
  */
-export function ActiveSocketHeaders() {
+export const ActiveSocketHeaders = memo(function ActiveSocketHeaders() {
+  const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
   const housings = useMemo(() => buildHeaderHousings(), []);
 
   const cavityMeshRef = useRef<THREE.InstancedMesh>(null);
   const pinMeshRef = useRef<THREE.InstancedMesh>(null);
-
-  const cavityGeo = useMemo(() => new THREE.BoxGeometry(0.13, 0.008, 0.13), []);
-  const pinGeo = useMemo(() => new THREE.BoxGeometry(0.045, 0.004, 0.045), []);
-  const plasticMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#eef2f6',
-        roughness: 0.42,
-        metalness: 0.04,
-      }),
-    []
-  );
-  const rimMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#dbe4ef',
-        roughness: 0.5,
-        metalness: 0.05,
-      }),
-    []
-  );
-  const cavityMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#0f172a',
-        roughness: 0.85,
-        metalness: 0.1,
-      }),
-    []
-  );
-  const pinMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#cbd5e1',
-        roughness: 0.25,
-        metalness: 0.85,
-      }),
-    []
-  );
-
-  useEffect(() => {
-    return () => {
-      cavityGeo.dispose();
-      pinGeo.dispose();
-      plasticMat.dispose();
-      rimMat.dispose();
-      cavityMat.dispose();
-      pinMat.dispose();
-    };
-  }, [cavityGeo, pinGeo, plasticMat, rimMat, cavityMat, pinMat]);
 
   useLayoutEffect(() => {
     const dummy = new THREE.Object3D();
@@ -173,13 +149,13 @@ export function ActiveSocketHeaders() {
         const height = h.yTop - h.yBase;
         return (
           <group key={h.key} position={[h.x, h.yBase + height / 2, h.zCenter]}>
-            <mesh material={plasticMat} castShadow receiveShadow>
+            <mesh material={SHARED_PLASTIC_MAT} castShadow={isHighPerf} receiveShadow={isHighPerf}>
               <boxGeometry args={[h.width, height, h.depth]} />
             </mesh>
             <mesh
               position={[0, height / 2 - 0.012, 0]}
-              material={rimMat}
-              receiveShadow
+              material={SHARED_RIM_MAT}
+              receiveShadow={isHighPerf}
             >
               <boxGeometry args={[h.width + 0.03, 0.024, h.depth + 0.03]} />
             </mesh>
@@ -189,17 +165,17 @@ export function ActiveSocketHeaders() {
 
       <instancedMesh
         ref={cavityMeshRef}
-        args={[cavityGeo, cavityMat, ALL_SOCKETS.length]}
+        args={[SHARED_ACTIVE_CAVITY_GEO, SHARED_CAVITY_MAT, ALL_SOCKETS.length]}
         frustumCulled={false}
       />
       <instancedMesh
         ref={pinMeshRef}
-        args={[pinGeo, pinMat, ALL_SOCKETS.length]}
+        args={[SHARED_ACTIVE_PIN_GEO, SHARED_CONTACT_PIN_MAT, ALL_SOCKETS.length]}
         frustumCulled={false}
       />
     </group>
   );
-}
+});
 
 export interface StandbyHeaderStripSpec {
   key: string;
@@ -218,18 +194,13 @@ export interface StandbyHeaderStripSpec {
 /**
  * Renders decorative white/shrouded standby pin headers with instanced cavities.
  */
-export function StandbyHeaderBank({ strips }: { strips: StandbyHeaderStripSpec[] }) {
+export const StandbyHeaderBank = memo(function StandbyHeaderBank({
+  strips,
+}: {
+  strips: StandbyHeaderStripSpec[];
+}) {
+  const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
   const cavityMeshRef = useRef<THREE.InstancedMesh>(null);
-  const cavityGeo = useMemo(() => new THREE.BoxGeometry(0.11, 0.008, 0.11), []);
-  const cavityMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#0f172a',
-        roughness: 0.85,
-        metalness: 0.1,
-      }),
-    []
-  );
 
   const cavityPositions = useMemo(() => {
     const pts: Array<[number, number, number]> = [];
@@ -246,13 +217,6 @@ export function StandbyHeaderBank({ strips }: { strips: StandbyHeaderStripSpec[]
     }
     return pts;
   }, [strips]);
-
-  useEffect(() => {
-    return () => {
-      cavityGeo.dispose();
-      cavityMat.dispose();
-    };
-  }, [cavityGeo, cavityMat]);
 
   useLayoutEffect(() => {
     const mesh = cavityMeshRef.current;
@@ -278,8 +242,8 @@ export function StandbyHeaderBank({ strips }: { strips: StandbyHeaderStripSpec[]
           <mesh
             key={s.key}
             position={[s.x, s.yBase + height / 2, s.z]}
-            castShadow
-            receiveShadow
+            castShadow={isHighPerf}
+            receiveShadow={isHighPerf}
           >
             <boxGeometry args={[width, height, depth]} />
             <meshStandardMaterial
@@ -294,10 +258,10 @@ export function StandbyHeaderBank({ strips }: { strips: StandbyHeaderStripSpec[]
       {cavityPositions.length > 0 && (
         <instancedMesh
           ref={cavityMeshRef}
-          args={[cavityGeo, cavityMat, cavityPositions.length]}
+          args={[SHARED_STANDBY_CAVITY_GEO, SHARED_CAVITY_MAT, cavityPositions.length]}
           frustumCulled={false}
         />
       )}
     </group>
   );
-}
+});

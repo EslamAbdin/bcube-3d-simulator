@@ -1,10 +1,24 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { WireSpec } from '../../engine/LogicEngine';
 import { SOCKET_MAP, type Vec3 } from '../../schema/boardSchema';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { playWireUnplug } from '../../utils/soundEffects';
+
+// Shared static Dupont boot & collar assets (never disposed on unmount)
+const SHARED_BOOT_GEO = new THREE.CylinderGeometry(0.088, 0.088, 0.42, 12);
+const SHARED_COLLAR_GEO = new THREE.CylinderGeometry(0.068, 0.072, 0.05, 12);
+const SHARED_BOOT_MAT = new THREE.MeshStandardMaterial({
+  color: '#1a1e26',
+  roughness: 0.45,
+  metalness: 0.15,
+});
+const SHARED_GHOST_TRACK_MAT = new THREE.MeshBasicMaterial({
+  transparent: true,
+  opacity: 0,
+  depthWrite: false,
+});
 
 function hashWireId(id: string): { hashY: number; hashLat: number } {
   let h1 = 2166136261;
@@ -33,51 +47,70 @@ function buildJumperCurve(from: Vec3, to: Vec3, wireId: string): THREE.CatmullRo
   const sway = hashLat * Math.min(0.42, dist * 0.055 + 0.08);
 
   const p0 = new THREE.Vector3(from.x, from.y + 0.34, from.z);
-  const p1 = new THREE.Vector3(from.x, from.y + 0.72, from.z);
+  const p1 = new THREE.Vector3(from.x, from.y + 0.74, from.z);
   const p2 = new THREE.Vector3((from.x + to.x) / 2 + perpX * sway, apexY, (from.z + to.z) / 2 + perpZ * sway);
-  const p3 = new THREE.Vector3(to.x, to.y + 0.72, to.z);
+  const p3 = new THREE.Vector3(to.x, to.y + 0.74, to.z);
   const p4 = new THREE.Vector3(to.x, to.y + 0.34, to.z);
 
   return new THREE.CatmullRomCurve3([p0, p1, p2, p3, p4], false, 'catmullrom', 0.45);
 }
 
-interface SharedBootAssets {
-  bootGeo: THREE.CylinderGeometry;
-  collarGeo: THREE.CylinderGeometry;
-  bootMat: THREE.MeshStandardMaterial;
-}
-
-function SeatedWire({
+const SeatedWire = memo(function SeatedWire({
   wire,
   isSelected,
-  assets,
+  castShadow,
 }: {
   wire: WireSpec;
   isSelected: boolean;
-  assets: SharedBootAssets;
+  castShadow: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
+  const tubeMatRef = useRef<THREE.MeshStandardMaterial>(null);
+
+  const signalFlowEnabled = useSimulatorStore((s) => s.signalFlowEnabled);
+  const wireSignal = useSimulatorStore((s) => s.socketStates[wire.fromSocketId] ?? 'FLOATING');
 
   const fromSock = SOCKET_MAP[wire.fromSocketId];
   const toSock = SOCKET_MAP[wire.toSocketId];
 
-  const { tubeGeo, haloGeo } = useMemo(() => {
-    if (!fromSock || !toSock) {
-      return { tubeGeo: null, haloGeo: null };
-    }
-    const curve = buildJumperCurve(fromSock.position, toSock.position, wire.id);
-    return {
-      tubeGeo: new THREE.TubeGeometry(curve, 40, 0.056, 10, false),
-      haloGeo: isSelected ? new THREE.TubeGeometry(curve, 36, 0.095, 10, false) : null,
-    };
-  }, [fromSock, toSock, wire.id, isSelected]);
+  const showXrayHalo =
+    signalFlowEnabled && (wireSignal === 'HIGH' || wireSignal === 'CONFLICT');
+  const needHalo = isSelected || showXrayHalo;
+
+  // Strictly memoize curve + primary TubeGeometry ONLY on endpoint geometry & wire ID (zero rebuild on signal/hover/select)
+  const curve = useMemo(() => {
+    if (!fromSock || !toSock) return null;
+    return buildJumperCurve(fromSock.position, toSock.position, wire.id);
+  }, [fromSock, toSock, wire.id]);
+
+  const tubeGeo = useMemo(
+    () => (curve ? new THREE.TubeGeometry(curve, 36, 0.056, 10, false) : null),
+    [curve]
+  );
+
+  const haloGeo = useMemo(
+    () => (curve && needHalo ? new THREE.TubeGeometry(curve, 32, 0.095, 10, false) : null),
+    [curve, needHalo]
+  );
 
   useEffect(() => {
     return () => {
       tubeGeo?.dispose();
+    };
+  }, [tubeGeo]);
+
+  useEffect(() => {
+    return () => {
       haloGeo?.dispose();
     };
-  }, [tubeGeo, haloGeo]);
+  }, [haloGeo]);
+
+  useFrame(({ clock }) => {
+    if (!tubeMatRef.current) return;
+    if (signalFlowEnabled && wireSignal === 'CONFLICT') {
+      tubeMatRef.current.emissiveIntensity = 1.45 + Math.sin(clock.elapsedTime * 12) * 0.75;
+    }
+  });
 
   useEffect(() => {
     return () => {
@@ -86,6 +119,48 @@ function SeatedWire({
       }
     };
   }, [hovered]);
+
+  let matColor = wire.color;
+  let matEmissive = isSelected || hovered ? wire.color : '#000000';
+  let matEmissiveIntensity = isSelected ? 0.55 : hovered ? 0.25 : 0;
+  let matTransparent = false;
+  let matOpacity = 1;
+  let haloColor = '#38bdf8';
+  let haloOpacity = 0.38;
+
+  if (signalFlowEnabled) {
+    if (wireSignal === 'HIGH') {
+      matColor = '#4ade80';
+      matEmissive = '#22c55e';
+      matEmissiveIntensity = isSelected ? 1.5 : 1.25;
+      haloColor = isSelected ? '#38bdf8' : '#4ade80';
+      haloOpacity = isSelected ? 0.42 : 0.28;
+    } else if (wireSignal === 'LOW') {
+      matColor = '#334155';
+      matEmissive = isSelected ? '#38bdf8' : '#000000';
+      matEmissiveIntensity = isSelected ? 0.45 : 0;
+      matTransparent = true;
+      matOpacity = 0.58;
+    } else if (wireSignal === 'CONFLICT') {
+      matColor = '#ef4444';
+      matEmissive = '#f59e0b';
+      matEmissiveIntensity = 1.6;
+      haloColor = '#ef4444';
+      haloOpacity = 0.4;
+    } else {
+      matColor = '#64748b';
+      matEmissive = isSelected ? '#38bdf8' : '#000000';
+      matEmissiveIntensity = isSelected ? 0.45 : 0;
+      matTransparent = true;
+      matOpacity = 0.48;
+    }
+  }
+
+  useEffect(() => {
+    if (tubeMatRef.current) {
+      tubeMatRef.current.needsUpdate = true;
+    }
+  }, [matTransparent]);
 
   if (!fromSock || !toSock || !tubeGeo) return null;
 
@@ -123,28 +198,31 @@ function SeatedWire({
       {/* Insulated flexible wire arch */}
       <mesh
         geometry={tubeGeo}
-        castShadow
+        castShadow={castShadow}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
         <meshStandardMaterial
-          color={wire.color}
-          emissive={isSelected || hovered ? wire.color : '#000000'}
-          emissiveIntensity={isSelected ? 0.55 : hovered ? 0.25 : 0}
-          roughness={0.36}
+          ref={tubeMatRef}
+          color={matColor}
+          emissive={matEmissive}
+          emissiveIntensity={matEmissiveIntensity}
+          transparent={matTransparent}
+          opacity={matOpacity}
+          roughness={signalFlowEnabled && wireSignal === 'HIGH' ? 0.25 : 0.36}
           metalness={0.08}
         />
       </mesh>
 
-      {/* Translucent glowing selection outline */}
-      {isSelected && haloGeo && (
+      {/* Translucent glowing selection or X-Ray HIGH/CONFLICT halo */}
+      {needHalo && haloGeo && (
         <mesh geometry={haloGeo}>
           <meshBasicMaterial
-            color="#38bdf8"
+            color={haloColor}
             transparent
-            opacity={0.38}
+            opacity={haloOpacity}
             depthWrite={false}
           />
         </mesh>
@@ -155,25 +233,25 @@ function SeatedWire({
         <group key={idx} position={[pos.x, pos.y, pos.z]}>
           <mesh
             position={[0, 0.19, 0]}
-            geometry={assets.bootGeo}
-            material={assets.bootMat}
-            castShadow
+            geometry={SHARED_BOOT_GEO}
+            material={SHARED_BOOT_MAT}
+            castShadow={castShadow}
           />
-          <mesh position={[0, 0.41, 0]} geometry={assets.collarGeo}>
+          <mesh position={[0, 0.41, 0]} geometry={SHARED_COLLAR_GEO}>
             <meshStandardMaterial color={wire.color} roughness={0.4} metalness={0.1} />
           </mesh>
         </group>
       ))}
     </group>
   );
-}
+});
 
-function GhostPreviewWire({
+const GhostPreviewWire = memo(function GhostPreviewWire({
   pendingSocketId,
-  assets,
+  castShadow,
 }: {
   pendingSocketId: string;
-  assets: SharedBootAssets;
+  castShadow: boolean;
 }) {
   const originSock = SOCKET_MAP[pendingSocketId];
   const activeWireColor = useSimulatorStore((s) => s.activeWireColor);
@@ -242,13 +320,13 @@ function GhostPreviewWire({
       {/* Origin Dupont boot seated at start socket */}
       <mesh
         position={[originSock.position.x, originSock.position.y + 0.19, originSock.position.z]}
-        geometry={assets.bootGeo}
-        material={assets.bootMat}
-        castShadow
+        geometry={SHARED_BOOT_GEO}
+        material={SHARED_BOOT_MAT}
+        castShadow={castShadow}
       />
 
       {/* Snapped target preview boot */}
-      <mesh ref={snapBootRef} visible={false} geometry={assets.bootGeo}>
+      <mesh ref={snapBootRef} visible={false} geometry={SHARED_BOOT_GEO}>
         <meshBasicMaterial color="#38bdf8" transparent opacity={0.55} depthWrite={false} />
       </mesh>
 
@@ -268,6 +346,7 @@ function GhostPreviewWire({
       <mesh
         position={[0, 0.25, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
+        material={SHARED_GHOST_TRACK_MAT}
         onPointerMove={(e) => {
           pointerTargetRef.current.set(e.point.x, 0.28, e.point.z);
         }}
@@ -283,41 +362,20 @@ function GhostPreviewWire({
         }}
       >
         <planeGeometry args={[90, 70]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
     </group>
   );
-}
+});
 
 /**
  * Renders all seated 3D CatmullRom jumper wires with Dupont boots,
  * live magnetic ghost preview wire, and Esc / Delete / Ctrl+Z / Right-Click shortcuts.
  */
-export function JumperWires() {
+export const JumperWires = memo(function JumperWires() {
   const wires = useSimulatorStore((s) => s.wires);
   const selectedWireId = useSimulatorStore((s) => s.selectedWireId);
   const pendingSocketId = useSimulatorStore((s) => s.pendingSocketId);
-
-  const assets = useMemo<SharedBootAssets>(
-    () => ({
-      bootGeo: new THREE.CylinderGeometry(0.088, 0.088, 0.42, 14),
-      collarGeo: new THREE.CylinderGeometry(0.068, 0.072, 0.05, 14),
-      bootMat: new THREE.MeshStandardMaterial({
-        color: '#1a1e26',
-        roughness: 0.45,
-        metalness: 0.15,
-      }),
-    }),
-    []
-  );
-
-  useEffect(() => {
-    return () => {
-      assets.bootGeo.dispose();
-      assets.collarGeo.dispose();
-      assets.bootMat.dispose();
-    };
-  }, [assets]);
+  const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
 
   // Global keyboard shortcuts: Esc (cancel), Delete/Backspace (delete selected), Ctrl/Cmd+Z (undo)
   useEffect(() => {
@@ -379,13 +437,13 @@ export function JumperWires() {
           key={wire.id}
           wire={wire}
           isSelected={wire.id === selectedWireId}
-          assets={assets}
+          castShadow={isHighPerf}
         />
       ))}
 
       {pendingSocketId && (
-        <GhostPreviewWire pendingSocketId={pendingSocketId} assets={assets} />
+        <GhostPreviewWire pendingSocketId={pendingSocketId} castShadow={isHighPerf} />
       )}
     </group>
   );
-}
+});

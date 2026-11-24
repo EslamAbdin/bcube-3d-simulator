@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { memo, useEffect } from 'react';
 import type { SignalLevel } from '../engine/gateEvaluators';
 import { MODULE_MAP, SOCKET_MAP } from '../schema/boardSchema';
 import { useSimulatorStore } from '../store/useSimulatorStore';
@@ -20,12 +20,14 @@ const TOAST_CLASSES = {
  * Bottom-center live HUD status bar: Bus contention warnings, transient toasts,
  * dismissible active preset guide chip, wiring prompts, and hovered pin signals.
  */
-export function StatusBar() {
+export const StatusBar = memo(function StatusBar() {
   const hoveredSocketId = useSimulatorStore((s) => s.hoveredSocketId);
   const hoveredStandbyModuleId = useSimulatorStore((s) => s.hoveredStandbyModuleId);
   const pendingSocketId = useSimulatorStore((s) => s.pendingSocketId);
   const selectedWireId = useSimulatorStore((s) => s.selectedWireId);
-  const socketStates = useSimulatorStore((s) => s.socketStates);
+  const hoveredSignal = useSimulatorStore<SignalLevel>((s) =>
+    s.hoveredSocketId ? (s.socketStates[s.hoveredSocketId] ?? 'FLOATING') : 'FLOATING'
+  );
   const conflicts = useSimulatorStore((s) => s.conflicts);
   const activePresetInfo = useSimulatorStore((s) => s.activePresetInfo);
   const dismissPresetInfo = useSimulatorStore((s) => s.dismissPresetInfo);
@@ -41,9 +43,6 @@ export function StatusBar() {
   const hoveredSocket = hoveredSocketId ? SOCKET_MAP[hoveredSocketId] : undefined;
   const hoveredStandby = hoveredStandbyModuleId ? MODULE_MAP[hoveredStandbyModuleId] : undefined;
   const originSocket = pendingSocketId ? SOCKET_MAP[pendingSocketId] : undefined;
-  const hoveredSignal: SignalLevel = hoveredSocket
-    ? (socketStates[hoveredSocket.id] ?? 'FLOATING')
-    : 'FLOATING';
 
   return (
     <div className="pointer-events-none fixed bottom-3 left-1/2 z-20 flex max-w-[94vw] -translate-x-1/2 flex-col items-center gap-1.5">
@@ -137,4 +136,4 @@ export function StatusBar() {
       </div>
     </div>
   );
-}
+});

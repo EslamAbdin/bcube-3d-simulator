@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import {
   ALL_MODULES,
@@ -6,6 +6,7 @@ import {
   type ActiveGateModuleType,
   type BoardModuleSpec,
 } from '../../schema/boardSchema';
+import { useSimulatorStore } from '../../store/useSimulatorStore';
 import {
   createActiveGateModuleTexture,
   createStandbyModuleTexture,
@@ -23,106 +24,150 @@ const ACTIVE_IC_CODES: Record<ActiveGateModuleType, string> = {
   IC_7486: 'SN74LS86N',
 };
 
-const STANDBY_IC_SPECS: Record<string, { code: string; pins: 8 | 14 | 16; len: number; wid: number; twin?: boolean }> = {
-  IC_7410: { code: 'SN74LS10N', pins: 14, len: 1.82, wid: 0.56 },
-  IC_7420: { code: 'SN74LS20N', pins: 14, len: 1.82, wid: 0.56 },
-  IC_7442: { code: 'SN74LS42N', pins: 16, len: 2.02, wid: 0.58 },
-  IC_7447: { code: 'SN74LS47N', pins: 16, len: 2.02, wid: 0.58 },
-  IC_7448: { code: 'SN74LS48N', pins: 16, len: 2.02, wid: 0.58 },
-  IC_7473: { code: 'SN74LS73N', pins: 14, len: 1.82, wid: 0.56 },
-  IC_7475: { code: 'SN74LS75N', pins: 16, len: 2.02, wid: 0.58 },
-  IC_7483: { code: 'SN74LS83N', pins: 16, len: 2.02, wid: 0.58 },
-  IC_7485: { code: 'SN74LS85N', pins: 16, len: 2.02, wid: 0.58 },
-  IC_7490: { code: 'SN74LS90N', pins: 14, len: 1.82, wid: 0.56 },
-  IC_74393: { code: 'SN74LS393', pins: 14, len: 1.82, wid: 0.56 },
-  NE555: { code: 'NE555P', pins: 8, len: 1.05, wid: 0.56 },
-  MV1: { code: 'CD4538', pins: 16, len: 1.92, wid: 0.58 },
-  MV2: { code: 'SN74LS123', pins: 16, len: 1.92, wid: 0.58 },
+const STANDBY_IC_SPECS: Record<string, { code: string; pins: 8 | 14 | 16; len: number; wid: number }> = {
+  IC_7410: { code: 'SN74LS10N', pins: 14, len: 1.82, wid: 0.46 },
+  IC_7420: { code: 'SN74LS20N', pins: 14, len: 1.82, wid: 0.46 },
+  IC_7442: { code: 'SN74LS42N', pins: 16, len: 1.96, wid: 0.48 },
+  IC_7447: { code: 'SN74LS47N', pins: 16, len: 1.96, wid: 0.48 },
+  IC_7448: { code: 'SN74LS48N', pins: 16, len: 1.96, wid: 0.48 },
+  IC_7473: { code: 'SN74LS73N', pins: 14, len: 1.82, wid: 0.46 },
+  IC_7475: { code: 'SN74LS75N', pins: 16, len: 1.96, wid: 0.48 },
+  IC_7483: { code: 'SN74LS83N', pins: 16, len: 1.96, wid: 0.48 },
+  IC_7485: { code: 'SN74LS85N', pins: 16, len: 1.96, wid: 0.48 },
+  IC_7490: { code: 'SN74LS90N', pins: 14, len: 1.82, wid: 0.46 },
+  IC_74393: { code: 'SN74LS393', pins: 14, len: 1.82, wid: 0.46 },
+  NE555: { code: 'NE555P', pins: 8, len: 1.05, wid: 0.46 },
+  MV1: { code: 'CD4538', pins: 16, len: 1.92, wid: 0.48 },
+  MV2: { code: 'SN74LS123', pins: 16, len: 1.92, wid: 0.48 },
 };
 
-function ActiveGateModuleCard({ mod }: { mod: BoardModuleSpec }) {
+const { width: DAUGHTER_W, depth: DAUGHTER_D, thickness: DAUGHTER_T } = BOARD_DIMENSIONS.daughterModule;
+
+const SHARED_DAUGHTER_PCB_GEO = new THREE.BoxGeometry(DAUGHTER_W, DAUGHTER_T, DAUGHTER_D);
+const SHARED_DAUGHTER_PLANE_GEO = new THREE.PlaneGeometry(DAUGHTER_W, DAUGHTER_D);
+const SHARED_ACTIVE_SLAB_MAT = new THREE.MeshStandardMaterial({
+  color: '#0a598c',
+  roughness: 0.55,
+  metalness: 0.06,
+});
+const SHARED_STANDBY_SLAB_MAT = new THREE.MeshStandardMaterial({
+  color: '#084770',
+  roughness: 0.58,
+  metalness: 0.06,
+});
+
+// 6-sided authentic brass hex standoffs & top corner mounting posts
+const SHARED_BRASS_STANDOFF_GEO = new THREE.CylinderGeometry(0.115, 0.115, 0.052, 6);
+const SHARED_BRASS_POST_GEO = new THREE.CylinderGeometry(0.11, 0.11, 0.042, 6);
+const SHARED_BRASS_BORE_GEO = new THREE.CylinderGeometry(0.045, 0.045, 0.046, 10);
+const SHARED_BRASS_MAT = new THREE.MeshStandardMaterial({
+  color: '#d4a017',
+  roughness: 0.26,
+  metalness: 0.86,
+});
+const SHARED_BORE_MAT = new THREE.MeshStandardMaterial({
+  color: '#1e293b',
+  roughness: 0.7,
+  metalness: 0.4,
+});
+
+const ActiveGateModuleCard = memo(function ActiveGateModuleCard({
+  mod,
+  castShadow,
+}: {
+  mod: BoardModuleSpec;
+  castShadow: boolean;
+}) {
   const tex = useCanvasTexture(() => createActiveGateModuleTexture(mod), [mod]);
-  const { width, depth, thickness, pcbBottomY, silkscreenY } = BOARD_DIMENSIONS.daughterModule;
+  const { pcbBottomY, silkscreenY } = BOARD_DIMENSIONS.daughterModule;
   const gType = mod.type as ActiveGateModuleType;
 
   return (
     <group name={`active-module-${mod.id}`}>
-      {/* Daughter PCB slab sitting on standoffs (Y = 0.05 to 0.20) */}
+      {/* Daughter PCB slab sitting on brass hex standoffs (Y = 0.05 to 0.20) */}
       <mesh
-        position={[mod.position.x, pcbBottomY + thickness / 2, mod.position.z]}
-        castShadow
-        receiveShadow
-      >
-        <boxGeometry args={[width, thickness, depth]} />
-        <meshStandardMaterial color="#0a598c" roughness={0.48} metalness={0.08} />
-      </mesh>
+        position={[mod.position.x, pcbBottomY + DAUGHTER_T / 2, mod.position.z]}
+        geometry={SHARED_DAUGHTER_PCB_GEO}
+        material={SHARED_ACTIVE_SLAB_MAT}
+        castShadow={castShadow}
+        receiveShadow={castShadow}
+      />
 
       {/* High-DPI 512×512 Silkscreen & IEEE Gate Symbols at Y = 0.204 */}
       <mesh
         position={[mod.position.x, silkscreenY, mod.position.z]}
         rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow
+        geometry={SHARED_DAUGHTER_PLANE_GEO}
+        receiveShadow={castShadow}
       >
-        <planeGeometry args={[width, depth]} />
-        <meshStandardMaterial map={tex} roughness={0.42} metalness={0.04} />
+        <meshStandardMaterial map={tex} roughness={0.55} metalness={0.03} />
       </mesh>
 
-      {/* Realistic DIP-14 IC mounted along bottom strip clear of Gate 4 */}
+      {/* DIP-14 IC mounted at TOP CENTER directly beneath the module title */}
       <DipICChip
-        position={[mod.position.x, silkscreenY, mod.position.z + 2.01]}
+        position={[mod.position.x, silkscreenY, mod.position.z - 1.56]}
         pinCount={14}
         label={ACTIVE_IC_CODES[gType]}
         length={1.62}
         width={0.44}
+        castShadow={castShadow}
       />
     </group>
   );
-}
+});
 
-function StandbyModuleCard({ mod }: { mod: BoardModuleSpec }) {
+const StandbyModuleCard = memo(function StandbyModuleCard({
+  mod,
+  castShadow,
+}: {
+  mod: BoardModuleSpec;
+  castShadow: boolean;
+}) {
   const tex = useCanvasTexture(() => createStandbyModuleTexture(mod), [mod]);
-  const { width, depth, thickness, pcbBottomY, silkscreenY } = BOARD_DIMENSIONS.daughterModule;
-  const spec = STANDBY_IC_SPECS[mod.id] ?? { code: mod.shortLabel, pins: 14 as const, len: 1.82, wid: 0.56 };
+  const { pcbBottomY, silkscreenY } = BOARD_DIMENSIONS.daughterModule;
+  const spec = STANDBY_IC_SPECS[mod.id] ?? { code: mod.shortLabel, pins: 14 as const, len: 1.82, wid: 0.46 };
 
   return (
     <group name={`standby-module-${mod.id}`}>
       {/* Slightly cooler/muted daughter PCB slab */}
       <mesh
-        position={[mod.position.x, pcbBottomY + thickness / 2, mod.position.z]}
-        castShadow
-        receiveShadow
-      >
-        <boxGeometry args={[width, thickness, depth]} />
-        <meshStandardMaterial color="#084770" roughness={0.55} metalness={0.08} />
-      </mesh>
+        position={[mod.position.x, pcbBottomY + DAUGHTER_T / 2, mod.position.z]}
+        geometry={SHARED_DAUGHTER_PCB_GEO}
+        material={SHARED_STANDBY_SLAB_MAT}
+        castShadow={castShadow}
+        receiveShadow={castShadow}
+      />
 
       {/* Standby Silkscreen plane */}
       <mesh
         position={[mod.position.x, silkscreenY, mod.position.z]}
         rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow
+        geometry={SHARED_DAUGHTER_PLANE_GEO}
+        receiveShadow={castShadow}
       >
-        <planeGeometry args={[width, depth]} />
-        <meshStandardMaterial map={tex} roughness={0.48} metalness={0.04} />
+        <meshStandardMaterial map={tex} roughness={0.58} metalness={0.03} />
       </mesh>
 
-      {/* Central Standby DIP IC */}
+      {/* Top-Center Standby DIP IC matching real bCube hardware */}
       <DipICChip
-        position={[mod.position.x, silkscreenY, mod.position.z + 0.15]}
+        position={[mod.position.x, silkscreenY, mod.position.z - 1.38]}
         pinCount={spec.pins}
         label={spec.code}
         length={spec.len}
         width={spec.wid}
         dimmed
+        castShadow={castShadow}
       />
     </group>
   );
-}
+});
 
 /**
- * Renders all 20 daughter PCBs in the 4×5 center module grid on brass corner standoffs.
+ * Renders all 20 daughter PCBs in the 4×5 center module grid on brass hex corner standoffs.
  */
-export function LogicModulesGrid() {
+export const LogicModulesGrid = memo(function LogicModulesGrid() {
+  const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
+
   const daughterModules = useMemo(
     () => ALL_MODULES.filter((m) => m.isDaughterModule),
     []
@@ -147,20 +192,20 @@ export function LogicModulesGrid() {
           x: m.position.x - 2.02,
           yBase: BOARD_DIMENSIONS.daughterModule.silkscreenY + 0.001,
           yTop: BOARD_DIMENSIONS.daughterModule.headerTopY,
-          z: m.position.z + 0.1,
-          rows: 6,
+          z: m.position.z + 0.48,
+          rows: 5,
           cols: 2,
-          pitchZ: 0.54,
+          pitchZ: 0.5,
         },
         {
           key: `${m.id}-R`,
           x: m.position.x + 2.02,
           yBase: BOARD_DIMENSIONS.daughterModule.silkscreenY + 0.001,
           yTop: BOARD_DIMENSIONS.daughterModule.headerTopY,
-          z: m.position.z + 0.1,
-          rows: 6,
+          z: m.position.z + 0.48,
+          rows: 5,
           cols: 2,
-          pitchZ: 0.54,
+          pitchZ: 0.5,
         }
       );
     }
@@ -168,87 +213,79 @@ export function LogicModulesGrid() {
   }, [standbyModules]);
 
   const standoffRef = useRef<THREE.InstancedMesh>(null);
-  const screwRef = useRef<THREE.InstancedMesh>(null);
-
-  const standoffGeo = useMemo(() => new THREE.CylinderGeometry(0.11, 0.11, 0.048, 12), []);
-  const standoffMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#ca8a04',
-        roughness: 0.25,
-        metalness: 0.85,
-      }),
-    []
-  );
-  const screwGeo = useMemo(() => new THREE.CylinderGeometry(0.11, 0.11, 0.025, 12), []);
-  const screwMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: '#e2e8f0',
-        roughness: 0.22,
-        metalness: 0.9,
-      }),
-    []
-  );
-
-  useEffect(() => {
-    return () => {
-      standoffGeo.dispose();
-      standoffMat.dispose();
-      screwGeo.dispose();
-      screwMat.dispose();
-    };
-  }, [standoffGeo, standoffMat, screwGeo, screwMat]);
+  const postRef = useRef<THREE.InstancedMesh>(null);
+  const boreRef = useRef<THREE.InstancedMesh>(null);
 
   const totalCorners = daughterModules.length * 4;
 
   useLayoutEffect(() => {
     const dummy = new THREE.Object3D();
     const standoffs = standoffRef.current;
-    const screws = screwRef.current;
-    if (!standoffs || !screws) return;
+    const posts = postRef.current;
+    const bores = boreRef.current;
+    if (!standoffs || !posts || !bores) return;
 
-    const dx = BOARD_DIMENSIONS.daughterModule.width / 2 - 0.26;
-    const dz = BOARD_DIMENSIONS.daughterModule.depth / 2 - 0.26;
+    const dx = DAUGHTER_W / 2 - 0.24;
+    const dz = DAUGHTER_D / 2 - 0.24;
     let idx = 0;
 
     for (const mod of daughterModules) {
       for (const sx of [-dx, dx]) {
         for (const sz of [-dz, dz]) {
-          dummy.position.set(mod.position.x + sx, 0.028, mod.position.z + sz);
+          dummy.position.set(mod.position.x + sx, 0.026, mod.position.z + sz);
+          dummy.rotation.set(0, Math.PI / 6, 0);
           dummy.updateMatrix();
           standoffs.setMatrixAt(idx, dummy.matrix);
 
           dummy.position.set(
             mod.position.x + sx,
-            BOARD_DIMENSIONS.daughterModule.silkscreenY + 0.012,
+            BOARD_DIMENSIONS.daughterModule.silkscreenY + 0.021,
             mod.position.z + sz
           );
           dummy.updateMatrix();
-          screws.setMatrixAt(idx, dummy.matrix);
+          posts.setMatrixAt(idx, dummy.matrix);
+
+          dummy.position.set(
+            mod.position.x + sx,
+            BOARD_DIMENSIONS.daughterModule.silkscreenY + 0.022,
+            mod.position.z + sz
+          );
+          dummy.rotation.set(0, 0, 0);
+          dummy.updateMatrix();
+          bores.setMatrixAt(idx, dummy.matrix);
           idx++;
         }
       }
     }
 
     standoffs.instanceMatrix.needsUpdate = true;
-    screws.instanceMatrix.needsUpdate = true;
+    posts.instanceMatrix.needsUpdate = true;
+    bores.instanceMatrix.needsUpdate = true;
   }, [daughterModules]);
 
   return (
     <group name="logic-modules-grid">
       {activeModules.map((mod) => (
-        <ActiveGateModuleCard key={mod.id} mod={mod} />
+        <ActiveGateModuleCard key={mod.id} mod={mod} castShadow={isHighPerf} />
       ))}
 
       {standbyModules.map((mod) => (
-        <StandbyModuleCard key={mod.id} mod={mod} />
+        <StandbyModuleCard key={mod.id} mod={mod} castShadow={isHighPerf} />
       ))}
 
       <StandbyHeaderBank strips={standbyStrips} />
 
-      <instancedMesh ref={standoffRef} args={[standoffGeo, standoffMat, totalCorners]} castShadow />
-      <instancedMesh ref={screwRef} args={[screwGeo, screwMat, totalCorners]} castShadow />
+      <instancedMesh
+        ref={standoffRef}
+        args={[SHARED_BRASS_STANDOFF_GEO, SHARED_BRASS_MAT, totalCorners]}
+        castShadow={isHighPerf}
+      />
+      <instancedMesh
+        ref={postRef}
+        args={[SHARED_BRASS_POST_GEO, SHARED_BRASS_MAT, totalCorners]}
+        castShadow={isHighPerf}
+      />
+      <instancedMesh ref={boreRef} args={[SHARED_BRASS_BORE_GEO, SHARED_BORE_MAT, totalCorners]} />
     </group>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { useFrame, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
@@ -12,7 +12,52 @@ import {
 import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { playButtonSnap, playSlideClick } from '../../utils/soundEffects';
 
-function InteractiveSlideSwitch({ sw }: { sw: SlideSwitchControlSpec }) {
+// Module-scoped shared geometries & invariant materials (never disposed on unmount)
+const INVISIBLE_HITBOX_MAT = new THREE.MeshBasicMaterial({
+  transparent: true,
+  opacity: 0,
+  depthWrite: false,
+});
+
+const SW_FRAME_GEO = new THREE.BoxGeometry(0.58, 0.14, 1.16);
+const SW_TRACK_GEO = new THREE.BoxGeometry(0.22, 0.03, 0.84);
+const SW_IND_GEO = new THREE.BoxGeometry(0.38, 0.016, 0.1);
+const SW_NUB_GEO = new THREE.BoxGeometry(0.26, 0.2, 0.34);
+const SW_NUB_TOP_GEO = new THREE.BoxGeometry(0.18, 0.012, 0.22);
+const SW_COLLIDER_GEO = new THREE.BoxGeometry(0.74, 0.36, 1.32);
+const SW_TRACK_MAT = new THREE.MeshStandardMaterial({ color: '#0f172a', roughness: 0.85, metalness: 0.1 });
+const SW_NUB_MAT = new THREE.MeshStandardMaterial({ color: '#1f2937', roughness: 0.5, metalness: 0.15 });
+
+const BTN_BEZEL_GEO = new THREE.BoxGeometry(1.04, 0.14, 1.04);
+const BTN_LATCH_H_GEO = new THREE.BoxGeometry(0.96, 0.025, 0.06);
+const BTN_LATCH_V_GEO = new THREE.BoxGeometry(0.06, 0.025, 0.84);
+const BTN_CAP_GEO = new THREE.BoxGeometry(0.76, 0.22, 0.76);
+const BTN_CAP_TOP_GEO = new THREE.BoxGeometry(0.54, 0.015, 0.54);
+const BTN_COLLIDER_GEO = new THREE.BoxGeometry(1.14, 0.4, 1.14);
+const BTN_LATCH_MAT = new THREE.MeshStandardMaterial({
+  color: '#22d3ee',
+  emissive: '#22d3ee',
+  emissiveIntensity: 2.2,
+});
+
+const LED_COLLAR_GEO = new THREE.CylinderGeometry(0.26, 0.29, 0.07, 20);
+const LED_BODY_GEO = new THREE.CylinderGeometry(0.21, 0.22, 0.22, 20);
+const LED_DOME_GEO = new THREE.SphereGeometry(0.21, 20, 14);
+const LED_POST_GEO = new THREE.BoxGeometry(0.026, 0.13, 0.026);
+const LED_ANVIL_GEO = new THREE.BoxGeometry(0.068, 0.15, 0.028);
+const LED_DIE_GEO = new THREE.BoxGeometry(0.044, 0.032, 0.044);
+const LED_HALO_SPHERE_GEO = new THREE.SphereGeometry(0.38, 16, 12);
+const LED_HALO_DISC_GEO = new THREE.CircleGeometry(0.36, 20);
+const LED_COLLAR_MAT = new THREE.MeshStandardMaterial({ color: '#1e293b', roughness: 0.6, metalness: 0.2 });
+const LED_METAL_MAT = new THREE.MeshStandardMaterial({ color: '#cbd5e1', roughness: 0.22, metalness: 0.9 });
+
+const InteractiveSlideSwitch = memo(function InteractiveSlideSwitch({
+  sw,
+  castShadow,
+}: {
+  sw: SlideSwitchControlSpec;
+  castShadow: boolean;
+}) {
   const isOn = useSimulatorStore((s) => Boolean(s.switches[sw.id]));
   const [hovered, setHovered] = useState(false);
   const nubRef = useRef<THREE.Group>(null);
@@ -61,8 +106,7 @@ function InteractiveSlideSwitch({ sw }: { sw: SlideSwitchControlSpec }) {
   return (
     <group position={[sw.position.x, 0.004, sw.position.z]} name={`slide-${sw.id}`}>
       {/* Brushed silver mounting frame */}
-      <mesh position={[0, 0.07, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.58, 0.14, 1.16]} />
+      <mesh position={[0, 0.07, 0]} geometry={SW_FRAME_GEO} castShadow={castShadow} receiveShadow={castShadow}>
         <meshStandardMaterial
           color={hovered ? '#f8fafc' : '#cbd5e1'}
           roughness={0.28}
@@ -71,14 +115,10 @@ function InteractiveSlideSwitch({ sw }: { sw: SlideSwitchControlSpec }) {
       </mesh>
 
       {/* Dark recessed track channel */}
-      <mesh position={[0, 0.135, 0]}>
-        <boxGeometry args={[0.22, 0.03, 0.84]} />
-        <meshStandardMaterial color="#0f172a" roughness={0.85} metalness={0.1} />
-      </mesh>
+      <mesh position={[0, 0.135, 0]} geometry={SW_TRACK_GEO} material={SW_TRACK_MAT} />
 
       {/* Crisp ON indicator strip visible clearly in both 3D & 2D top-down views */}
-      <mesh position={[0, 0.148, -0.49]}>
-        <boxGeometry args={[0.38, 0.016, 0.1]} />
+      <mesh position={[0, 0.148, -0.49]} geometry={SW_IND_GEO}>
         <meshStandardMaterial
           color={isOn ? '#22c55e' : '#1e293b'}
           emissive={isOn ? '#22c55e' : '#000000'}
@@ -89,13 +129,9 @@ function InteractiveSlideSwitch({ sw }: { sw: SlideSwitchControlSpec }) {
 
       {/* Animated slider nub */}
       <group ref={nubRef} position={[0, 0.22, 0.23]}>
-        <mesh castShadow>
-          <boxGeometry args={[0.26, 0.2, 0.34]} />
-          <meshStandardMaterial color="#1f2937" roughness={0.5} metalness={0.15} />
-        </mesh>
+        <mesh geometry={SW_NUB_GEO} material={SW_NUB_MAT} castShadow={castShadow} />
         {/* High-contrast top nub bar */}
-        <mesh position={[0, 0.104, 0]}>
-          <boxGeometry args={[0.18, 0.012, 0.22]} />
+        <mesh position={[0, 0.104, 0]} geometry={SW_NUB_TOP_GEO}>
           <meshStandardMaterial
             color={isOn ? '#34d399' : '#64748b'}
             emissive={isOn ? '#10b981' : '#000000'}
@@ -108,19 +144,24 @@ function InteractiveSlideSwitch({ sw }: { sw: SlideSwitchControlSpec }) {
       {/* Generous invisible pointer collider */}
       <mesh
         position={[0, 0.18, 0]}
+        geometry={SW_COLLIDER_GEO}
+        material={INVISIBLE_HITBOX_MAT}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
         onPointerDown={handlePointerDown}
         onClick={handleClick}
-      >
-        <boxGeometry args={[0.74, 0.36, 1.32]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
+      />
     </group>
   );
-}
+});
 
-function InteractiveButtonSwitch({ btn }: { btn: ButtonSwitchControlSpec }) {
+const InteractiveButtonSwitch = memo(function InteractiveButtonSwitch({
+  btn,
+  castShadow,
+}: {
+  btn: ButtonSwitchControlSpec;
+  castShadow: boolean;
+}) {
   const isPressed = useSimulatorStore((s) => Boolean(s.buttons[btn.id]));
   const isLatched = useSimulatorStore((s) => Boolean(s.latchedButtons[btn.id]));
   const [hovered, setHovered] = useState(false);
@@ -213,50 +254,35 @@ function InteractiveButtonSwitch({ btn }: { btn: ButtonSwitchControlSpec }) {
 
   return (
     <group position={[btn.position.x, 0.004, btn.position.z]} name={`button-${btn.id}`}>
-      {/* Dark square housing bezel */}
-      <mesh position={[0, 0.07, 0]} castShadow receiveShadow>
-        <boxGeometry args={[1.04, 0.14, 1.04]} />
+      {/* Dark-grey square housing collar */}
+      <mesh position={[0, 0.07, 0]} geometry={BTN_BEZEL_GEO} castShadow={castShadow} receiveShadow={castShadow}>
         <meshStandardMaterial
-          color={hovered ? '#334155' : '#1e293b'}
-          roughness={0.52}
-          metalness={0.2}
+          color={hovered ? '#3b475c' : '#2b3445'}
+          roughness={0.5}
+          metalness={0.18}
         />
       </mesh>
 
       {/* Glowing cyan perimeter latch ring when locked down */}
       {isLatched && (
         <group position={[0, 0.148, 0]}>
-          <mesh position={[0, 0, -0.45]}>
-            <boxGeometry args={[0.96, 0.025, 0.06]} />
-            <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={2.2} />
-          </mesh>
-          <mesh position={[0, 0, 0.45]}>
-            <boxGeometry args={[0.96, 0.025, 0.06]} />
-            <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={2.2} />
-          </mesh>
-          <mesh position={[-0.45, 0, 0]}>
-            <boxGeometry args={[0.06, 0.025, 0.84]} />
-            <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={2.2} />
-          </mesh>
-          <mesh position={[0.45, 0, 0]}>
-            <boxGeometry args={[0.06, 0.025, 0.84]} />
-            <meshStandardMaterial color="#22d3ee" emissive="#22d3ee" emissiveIntensity={2.2} />
-          </mesh>
+          <mesh position={[0, 0, -0.45]} geometry={BTN_LATCH_H_GEO} material={BTN_LATCH_MAT} />
+          <mesh position={[0, 0, 0.45]} geometry={BTN_LATCH_H_GEO} material={BTN_LATCH_MAT} />
+          <mesh position={[-0.45, 0, 0]} geometry={BTN_LATCH_V_GEO} material={BTN_LATCH_MAT} />
+          <mesh position={[0.45, 0, 0]} geometry={BTN_LATCH_V_GEO} material={BTN_LATCH_MAT} />
         </group>
       )}
 
-      {/* Animated tactile white pushbutton cap */}
+      {/* Animated tactile off-white square pushbutton cap */}
       <group ref={capGroupRef} position={[0, 0.2, 0]}>
-        <mesh castShadow receiveShadow>
-          <boxGeometry args={[0.76, 0.22, 0.76]} />
+        <mesh geometry={BTN_CAP_GEO} castShadow={castShadow} receiveShadow={castShadow}>
           <meshStandardMaterial
-            color={isLatched ? '#e0f2fe' : hovered ? '#ffffff' : '#f8fafc'}
-            roughness={0.32}
+            color={isLatched ? '#e0f2fe' : hovered ? '#ffffff' : '#f1f5f9'}
+            roughness={0.34}
             metalness={0.05}
           />
         </mesh>
-        <mesh position={[0, 0.112, 0]}>
-          <boxGeometry args={[0.54, 0.015, 0.54]} />
+        <mesh position={[0, 0.112, 0]} geometry={BTN_CAP_TOP_GEO}>
           <meshStandardMaterial
             color={isPressed ? '#bae6fd' : '#e2e8f0'}
             roughness={0.45}
@@ -268,26 +294,31 @@ function InteractiveButtonSwitch({ btn }: { btn: ButtonSwitchControlSpec }) {
       {/* Raycast pointer collider */}
       <mesh
         position={[0, 0.2, 0]}
+        geometry={BTN_COLLIDER_GEO}
+        material={INVISIBLE_HITBOX_MAT}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
         onPointerDown={handlePointerDown}
         onPointerUp={handlePointerUp}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
-      >
-        <boxGeometry args={[1.14, 0.4, 1.14]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
+      />
     </group>
   );
-}
+});
 
-function ReactiveLed({ led }: { led: LedIndicatorSpec }) {
-  const ledState = useSimulatorStore((s) => s.ledStates[led.id]);
-  const signal = ledState?.signal ?? 'FLOATING';
+const ReactiveLed = memo(function ReactiveLed({
+  led,
+  isHighPerf,
+}: {
+  led: LedIndicatorSpec;
+  isHighPerf: boolean;
+}) {
+  const signal = useSimulatorStore((s) => s.ledStates[led.id]?.signal ?? 'FLOATING');
   const isLit = signal === 'HIGH';
   const isConflict = signal === 'CONFLICT';
   const isRed = led.bank === 'red';
+  const activeGlow = isLit || isConflict;
 
   const bodyMatRef = useRef<THREE.MeshStandardMaterial>(null);
   const domeMatRef = useRef<THREE.MeshStandardMaterial>(null);
@@ -300,9 +331,7 @@ function ReactiveLed({ led }: { led: LedIndicatorSpec }) {
       ? isRed
         ? '#ef4444'
         : '#38bdf8'
-      : isRed
-        ? '#7f1d1d'
-        : '#1e3a8a';
+      : '#eef6ff';
 
   const emissiveColor = isConflict
     ? '#f59e0b'
@@ -311,6 +340,16 @@ function ReactiveLed({ led }: { led: LedIndicatorSpec }) {
         ? '#dc2626'
         : '#2563eb'
       : '#000000';
+
+  const dieColor = isConflict
+    ? '#fde68a'
+    : isLit
+      ? isRed
+        ? '#fecaca'
+        : '#bae6fd'
+      : isRed
+        ? '#7f1d1d'
+        : '#1e3a8a';
 
   const haloColor = isConflict ? '#fbbf24' : isRed ? '#ef4444' : '#38bdf8';
 
@@ -325,62 +364,70 @@ function ReactiveLed({ led }: { led: LedIndicatorSpec }) {
     }
   });
 
-  const activeGlow = isLit || isConflict;
-
   return (
     <group position={[led.position.x, 0.004, led.position.z]} name={`led-${led.id}`}>
       {/* Dark collar ring */}
-      <mesh position={[0, 0.035, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.26, 0.29, 0.07, 20]} />
-        <meshStandardMaterial color="#1e293b" roughness={0.6} metalness={0.2} />
+      <mesh position={[0, 0.035, 0]} geometry={LED_COLLAR_GEO} material={LED_COLLAR_MAT} castShadow={isHighPerf} receiveShadow={isHighPerf} />
+
+      {/* Internal metallic lead frame & die cup visible inside water-clear OFF lens */}
+      <mesh position={[-0.045, 0.125, 0]} geometry={LED_POST_GEO} material={LED_METAL_MAT} />
+      <mesh position={[0.035, 0.14, 0]} geometry={LED_ANVIL_GEO} material={LED_METAL_MAT} />
+      <mesh position={[0.025, 0.205, 0]} geometry={LED_DIE_GEO}>
+        <meshStandardMaterial
+          color={dieColor}
+          emissive={activeGlow ? emissiveColor : '#000000'}
+          emissiveIntensity={activeGlow ? 2.4 : 0}
+          roughness={0.25}
+          metalness={0.2}
+        />
       </mesh>
 
-      {/* 5mm acrylic LED body */}
-      <mesh position={[0, 0.16, 0]} castShadow>
-        <cylinderGeometry args={[0.21, 0.22, 0.22, 20]} />
+      {/* 5mm water-clear acrylic LED body (crystal clear when OFF, glowing color when HIGH) */}
+      <mesh position={[0, 0.16, 0]} geometry={LED_BODY_GEO} castShadow={isHighPerf}>
         <meshStandardMaterial
           ref={bodyMatRef}
           color={lensColor}
           emissive={emissiveColor}
-          emissiveIntensity={isLit ? 2.25 : 0}
-          roughness={0.16}
-          metalness={0.05}
+          emissiveIntensity={isLit ? 2.35 : 0}
+          roughness={activeGlow ? 0.12 : 0.07}
+          metalness={activeGlow ? 0.05 : 0.12}
           transparent
-          opacity={activeGlow ? 0.98 : 0.88}
+          opacity={activeGlow ? 0.94 : 0.34}
+          depthWrite={activeGlow}
         />
       </mesh>
 
-      {/* Rounded LED dome top */}
-      <mesh position={[0, 0.27, 0]} castShadow>
-        <sphereGeometry args={[0.21, 20, 14]} />
+      {/* Rounded water-clear LED dome top */}
+      <mesh position={[0, 0.27, 0]} geometry={LED_DOME_GEO} castShadow={isHighPerf}>
         <meshStandardMaterial
           ref={domeMatRef}
           color={lensColor}
           emissive={emissiveColor}
-          emissiveIntensity={isLit ? 2.25 : 0}
-          roughness={0.14}
-          metalness={0.05}
+          emissiveIntensity={isLit ? 2.35 : 0}
+          roughness={activeGlow ? 0.12 : 0.06}
+          metalness={activeGlow ? 0.05 : 0.14}
           transparent
-          opacity={activeGlow ? 0.98 : 0.9}
+          opacity={activeGlow ? 0.95 : 0.36}
+          depthWrite={activeGlow}
         />
       </mesh>
 
       {/* Additive glow halos for 3D + 2D top-down visibility when lit/conflict */}
       {activeGlow && (
         <>
-          <mesh position={[0, 0.24, 0]}>
-            <sphereGeometry args={[0.38, 16, 12]} />
-            <meshBasicMaterial
-              ref={haloMatRef}
-              color={haloColor}
-              transparent
-              opacity={0.28}
-              depthWrite={false}
-              blending={THREE.AdditiveBlending}
-            />
-          </mesh>
-          <mesh position={[0, 0.42, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <circleGeometry args={[0.36, 20]} />
+          {isHighPerf && (
+            <mesh position={[0, 0.24, 0]} geometry={LED_HALO_SPHERE_GEO}>
+              <meshBasicMaterial
+                ref={haloMatRef}
+                color={haloColor}
+                transparent
+                opacity={0.28}
+                depthWrite={false}
+                blending={THREE.AdditiveBlending}
+              />
+            </mesh>
+          )}
+          <mesh position={[0, 0.42, 0]} rotation={[-Math.PI / 2, 0, 0]} geometry={LED_HALO_DISC_GEO}>
             <meshBasicMaterial
               ref={discHaloMatRef}
               color={haloColor}
@@ -394,32 +441,34 @@ function ReactiveLed({ led }: { led: LedIndicatorSpec }) {
       )}
     </group>
   );
-}
+});
 
 /**
  * Interactive 16 Slide Switches, 4 Active-Low Pushbuttons (momentary + latch),
- * and live reactive 8 Red + 8 Blue 3D LEDs strictly positioned from boardSchema.ts.
+ * and live reactive 8 Red + 8 Blue water-clear 3D LEDs strictly positioned from boardSchema.ts.
  */
-export function ActiveIOModules() {
+export const ActiveIOModules = memo(function ActiveIOModules() {
+  const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
+
   return (
     <group name="active-io-modules">
       <group name="slide-switches">
         {SLIDE_SWITCHES.map((sw) => (
-          <InteractiveSlideSwitch key={sw.id} sw={sw} />
+          <InteractiveSlideSwitch key={sw.id} sw={sw} castShadow={isHighPerf} />
         ))}
       </group>
 
       <group name="button-switches">
         {BUTTON_SWITCHES.map((btn) => (
-          <InteractiveButtonSwitch key={btn.id} btn={btn} />
+          <InteractiveButtonSwitch key={btn.id} btn={btn} castShadow={isHighPerf} />
         ))}
       </group>
 
       <group name="led-banks">
         {LED_INDICATORS.map((led) => (
-          <ReactiveLed key={led.id} led={led} />
+          <ReactiveLed key={led.id} led={led} isHighPerf={isHighPerf} />
         ))}
       </group>
     </group>
   );
-}
+});

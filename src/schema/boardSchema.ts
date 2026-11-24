@@ -494,10 +494,10 @@ for (const mod of CENTER_MODULES) {
   const rightX = mod.position.x + 2.02;
 
   const isNot = gType === 'IC_7404';
-  const leftStepZ = isNot ? 0.88 : 0.44;
-  const leftStartZ = mod.position.z - (isNot ? 1.32 : 1.54);
-  const rightStartZ = mod.position.z - 1.32;
-  const rightStepZ = 0.88;
+  const leftStepZ = isNot ? 0.72 : 0.36;
+  const leftStartZ = mod.position.z - (isNot ? 0.58 : 0.76);
+  const rightStartZ = mod.position.z - 0.58;
+  const rightStepZ = 0.72;
 
   let leftCursor = 0;
   for (const gate of mod.gates) {

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { createIcTopTexture, useCanvasTexture } from '../textures/silkscreenGenerator';
 
@@ -10,13 +10,39 @@ export interface DipICChipProps {
   width?: number;
   height?: number;
   dimmed?: boolean;
+  castShadow?: boolean;
 }
+
+const SHARED_SHOULDER_GEO = new THREE.BoxGeometry(0.055, 0.025, 0.09);
+const SHARED_LEG_GEO = new THREE.BoxGeometry(0.055, 0.16, 0.032);
+const SHARED_NOTCH_GEO = new THREE.CylinderGeometry(0.075, 0.075, 0.012, 16);
+const SHARED_NOTCH_MAT = new THREE.MeshStandardMaterial({ color: '#0b0f17', roughness: 0.8 });
+const SHARED_PIN_MAT_ACTIVE = new THREE.MeshStandardMaterial({
+  color: '#cbd5e1',
+  roughness: 0.25,
+  metalness: 0.85,
+});
+const SHARED_PIN_MAT_DIMMED = new THREE.MeshStandardMaterial({
+  color: '#94a3b8',
+  roughness: 0.25,
+  metalness: 0.85,
+});
+const SHARED_BODY_MAT_ACTIVE = new THREE.MeshStandardMaterial({
+  color: '#181c24',
+  roughness: 0.58,
+  metalness: 0.12,
+});
+const SHARED_BODY_MAT_DIMMED = new THREE.MeshStandardMaterial({
+  color: '#1f2633',
+  roughness: 0.58,
+  metalness: 0.12,
+});
 
 /**
  * Procedural DIP-8 / DIP-14 / DIP-16 matte-black IC package with metallic pins
  * and laser-etched part code. Local Y = 0 sits flush on the PCB top surface.
  */
-export function DipICChip({
+export const DipICChip = memo(function DipICChip({
   position,
   label,
   pinCount = 14,
@@ -24,32 +50,15 @@ export function DipICChip({
   width = 0.44,
   height = 0.22,
   dimmed = false,
+  castShadow = true,
 }: DipICChipProps) {
   const pinsPerSide = pinCount / 2;
   const shoulderRef = useRef<THREE.InstancedMesh>(null);
   const legRef = useRef<THREE.InstancedMesh>(null);
 
   const topTex = useCanvasTexture(() => createIcTopTexture(label), [label]);
-
-  const shoulderGeo = useMemo(() => new THREE.BoxGeometry(0.055, 0.025, 0.09), []);
-  const legGeo = useMemo(() => new THREE.BoxGeometry(0.055, 0.16, 0.032), []);
-  const pinMat = useMemo(
-    () =>
-      new THREE.MeshStandardMaterial({
-        color: dimmed ? '#94a3b8' : '#cbd5e1',
-        roughness: 0.25,
-        metalness: 0.85,
-      }),
-    [dimmed]
-  );
-
-  useEffect(() => {
-    return () => {
-      shoulderGeo.dispose();
-      legGeo.dispose();
-      pinMat.dispose();
-    };
-  }, [shoulderGeo, legGeo, pinMat]);
+  const pinMat = dimmed ? SHARED_PIN_MAT_DIMMED : SHARED_PIN_MAT_ACTIVE;
+  const bodyMat = dimmed ? SHARED_BODY_MAT_DIMMED : SHARED_BODY_MAT_ACTIVE;
 
   useLayoutEffect(() => {
     const shoulderMesh = shoulderRef.current;
@@ -90,20 +99,16 @@ export function DipICChip({
   return (
     <group position={position} name={`dip-ic-${label}`}>
       {/* Matte black epoxy body */}
-      <mesh position={[0, bodyCenterY, 0]} castShadow receiveShadow>
+      <mesh position={[0, bodyCenterY, 0]} material={bodyMat} castShadow={castShadow} receiveShadow={castShadow}>
         <boxGeometry args={[length, height, width]} />
-        <meshStandardMaterial
-          color={dimmed ? '#1f2633' : '#181c24'}
-          roughness={0.58}
-          metalness={0.12}
-        />
       </mesh>
 
       {/* Left-side orientation notch */}
-      <mesh position={[-length / 2 + 0.045, bodyTopY + 0.001, 0]} rotation={[0, 0, 0]}>
-        <cylinderGeometry args={[0.075, 0.075, 0.012, 16]} />
-        <meshStandardMaterial color="#0b0f17" roughness={0.8} />
-      </mesh>
+      <mesh
+        position={[-length / 2 + 0.045, bodyTopY + 0.001, 0]}
+        geometry={SHARED_NOTCH_GEO}
+        material={SHARED_NOTCH_MAT}
+      />
 
       {/* Top laser-etched IC code */}
       <mesh position={[0, bodyTopY + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -112,8 +117,8 @@ export function DipICChip({
       </mesh>
 
       {/* Metallic side pins */}
-      <instancedMesh ref={shoulderRef} args={[shoulderGeo, pinMat, pinCount]} castShadow />
-      <instancedMesh ref={legRef} args={[legGeo, pinMat, pinCount]} castShadow />
+      <instancedMesh ref={shoulderRef} args={[SHARED_SHOULDER_GEO, pinMat, pinCount]} castShadow={castShadow} />
+      <instancedMesh ref={legRef} args={[SHARED_LEG_GEO, pinMat, pinCount]} castShadow={castShadow} />
     </group>
   );
-}
+});

@@ -1,8 +1,12 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { MODULE_MAP } from '../../schema/boardSchema';
+import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { createSevenSegFaceTexture, useCanvasTexture } from '../textures/silkscreenGenerator';
 import { StandbyHeaderBank, type StandbyHeaderStripSpec } from './WhitePinHeader';
+
+const SHARED_DIP_SLIDER_GEO = new THREE.BoxGeometry(0.09, 0.05, 0.14);
+const SHARED_DIP_SLIDER_MAT = new THREE.MeshStandardMaterial({ color: '#f8fafc', roughness: 0.35 });
 
 function RotaryKnob({ position, radius = 0.48 }: { position: [number, number, number]; radius?: number }) {
   return (
@@ -72,23 +76,12 @@ function ResistorRow({
  * Renders procedural 3D hardware for all standby perimeter I/O and utility blocks
  * strictly anchored to their boardSchema.ts module centers.
  */
-export function StandbyIOModules() {
+export const StandbyIOModules = memo(function StandbyIOModules() {
+  const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
   const sevenSegUnlitTex = useCanvasTexture(() => createSevenSegFaceTexture('8.8.', false), []);
   const freqLitTex = useCanvasTexture(() => createSevenSegFaceTexture('000.0', true), []);
 
   const dipSliderRef = useRef<THREE.InstancedMesh>(null);
-  const dipSliderGeo = useMemo(() => new THREE.BoxGeometry(0.09, 0.05, 0.14), []);
-  const dipSliderMat = useMemo(
-    () => new THREE.MeshStandardMaterial({ color: '#f8fafc', roughness: 0.35 }),
-    []
-  );
-
-  useEffect(() => {
-    return () => {
-      dipSliderGeo.dispose();
-      dipSliderMat.dispose();
-    };
-  }, [dipSliderGeo, dipSliderMat]);
 
   const dipMod = MODULE_MAP.DIP_SWITCH;
   const waveMod = MODULE_MAP.WAVEFORM_GEN;
@@ -130,8 +123,10 @@ export function StandbyIOModules() {
       { key: 'pd-top-hdr', x: pullDownTop.position.x, yBase: 0.005, yTop: 0.22, z: pullDownTop.position.z + 0.9, rows: 2, cols: 8, pitchX: 0.46, pitchZ: 0.254 },
       { key: 'volt-hdr', x: voltMod.position.x + 2.55, yBase: 0.005, yTop: 0.22, z: voltMod.position.z + 0.25, rows: 3, cols: 2, pitchZ: 0.44 },
       { key: 'spk-hdr', x: spkMod.position.x + 2.2, yBase: 0.005, yTop: 0.22, z: spkMod.position.z + 0.25, rows: 2, cols: 2, pitchZ: 0.44 },
-      { key: 'ca-hdr', x: segAnode.position.x - 2.45, yBase: 0.005, yTop: 0.22, z: segAnode.position.z + 0.25, rows: 8, cols: 2, pitchZ: 0.42 },
-      { key: 'cc-hdr', x: segCathode.position.x - 2.45, yBase: 0.005, yTop: 0.22, z: segCathode.position.z + 0.25, rows: 8, cols: 2, pitchZ: 0.42 },
+      { key: 'ca-hdr-L', x: segAnode.position.x - 1.35, yBase: 0.005, yTop: 0.22, z: segAnode.position.z + 1.38, rows: 2, cols: 5, pitchX: 0.42, pitchZ: 0.254 },
+      { key: 'ca-hdr-R', x: segAnode.position.x + 1.35, yBase: 0.005, yTop: 0.22, z: segAnode.position.z + 1.38, rows: 2, cols: 5, pitchX: 0.42, pitchZ: 0.254 },
+      { key: 'cc-hdr-L', x: segCathode.position.x - 1.35, yBase: 0.005, yTop: 0.22, z: segCathode.position.z + 1.38, rows: 2, cols: 5, pitchX: 0.42, pitchZ: 0.254 },
+      { key: 'cc-hdr-R', x: segCathode.position.x + 1.35, yBase: 0.005, yTop: 0.22, z: segCathode.position.z + 1.38, rows: 2, cols: 5, pitchX: 0.42, pitchZ: 0.254 },
       { key: 'pu-bot-hdr', x: pullUpBot.position.x, yBase: 0.005, yTop: 0.22, z: pullUpBot.position.z - 0.55, rows: 2, cols: 6, pitchX: 0.46, pitchZ: 0.254 },
       { key: 'pd-bot-hdr', x: pullDownBot.position.x, yBase: 0.005, yTop: 0.22, z: pullDownBot.position.z - 0.55, rows: 2, cols: 6, pitchX: 0.46, pitchZ: 0.254 },
       { key: 'freq-hdr', x: freqMod.position.x + 2.25, yBase: 0.005, yTop: 0.22, z: freqMod.position.z + 0.25, rows: 2, cols: 2, pitchZ: 0.44 },
@@ -152,7 +147,7 @@ export function StandbyIOModules() {
           </mesh>
         ))}
       </group>
-      <instancedMesh ref={dipSliderRef} args={[dipSliderGeo, dipSliderMat, 16]} castShadow />
+      <instancedMesh ref={dipSliderRef} args={[SHARED_DIP_SLIDER_GEO, SHARED_DIP_SLIDER_MAT, 16]} castShadow={isHighPerf} />
 
       {/* 2. WAVEFORM GENERATOR (3 rotary knobs + silver mode toggle) */}
       <group position={[waveMod.position.x, 0.004, waveMod.position.z]}>
@@ -197,13 +192,13 @@ export function StandbyIOModules() {
 
       {/* 6. 2x COMMON-ANODE & 2x COMMON-CATHODE 7-SEGMENT DISPLAYS */}
       {[segAnode, segCathode].map((seg) => (
-        <group key={seg.id} position={[seg.position.x + 0.68, 0.004, seg.position.z + 0.25]}>
-          <mesh position={[0, 0.19, 0]} castShadow receiveShadow>
-            <boxGeometry args={[3.4, 0.38, 2.1]} />
+        <group key={seg.id} position={[seg.position.x, 0.004, seg.position.z - 0.52]}>
+          <mesh position={[0, 0.19, 0]} castShadow={isHighPerf} receiveShadow={isHighPerf}>
+            <boxGeometry args={[4.3, 0.38, 2.0]} />
             <meshStandardMaterial color="#111827" roughness={0.42} metalness={0.12} />
           </mesh>
           <mesh position={[0, 0.384, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <planeGeometry args={[3.2, 1.9]} />
+            <planeGeometry args={[4.08, 1.8]} />
             <meshStandardMaterial map={sevenSegUnlitTex} roughness={0.28} metalness={0.05} />
           </mesh>
         </group>
@@ -317,4 +312,4 @@ export function StandbyIOModules() {
       </group>
     </group>
   );
-}
+});
