@@ -1,10 +1,12 @@
 import { Canvas } from '@react-three/fiber';
+import { StatusBar } from './components/StatusBar';
 import { TopHud } from './components/TopHud';
 import { CameraRig } from './scene/CameraRig';
 import { LabEnvironment } from './scene/LabEnvironment';
 import { ActiveIOModules } from './scene/parts/ActiveIOModules';
 import { BoardChassis } from './scene/parts/BoardChassis';
 import { LogicModulesGrid } from './scene/parts/LogicModulesGrid';
+import { SocketHitboxes } from './scene/parts/SocketHitboxes';
 import { StandbyIOModules } from './scene/parts/StandbyIOModules';
 import { ActiveSocketHeaders } from './scene/parts/WhitePinHeader';
 
@@ -23,8 +25,10 @@ export function App() {
         <ActiveIOModules />
         <StandbyIOModules />
         <LogicModulesGrid />
+        <SocketHitboxes />
       </Canvas>
       <TopHud />
+      <StatusBar />
     </div>
   );
 }

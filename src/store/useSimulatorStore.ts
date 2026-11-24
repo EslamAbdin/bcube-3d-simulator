@@ -46,6 +46,9 @@ interface SimulatorState {
   cameraMode: CameraMode;
   cameraResetCount: number;
   ttlFloatingIsHigh: boolean;
+  soundEnabled: boolean;
+  hoveredSocketId: string | null;
+  hoveredStandbyModuleId: string | null;
 
   // Derived simulation state
   netStates: Record<string, SignalLevel>;
@@ -65,6 +68,10 @@ interface SimulatorState {
   setCameraMode: (mode: CameraMode) => void;
   triggerCameraReset: () => void;
   setTtlFloatingIsHigh: (enabled: boolean) => void;
+  toggleSound: () => void;
+  setHoveredSocketId: (socketId: string | null) => void;
+  setHoveredStandbyModuleId: (moduleId: string | null) => void;
+  resetInputs: () => void;
   exportCircuitJSON: () => string;
   importCircuitJSON: (json: string) => { ok: boolean; error?: string };
   resetBoard: () => void;
@@ -110,6 +117,9 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   cameraMode: '3d',
   cameraResetCount: 0,
   ttlFloatingIsHigh: false,
+  soundEnabled: true,
+  hoveredSocketId: null,
+  hoveredStandbyModuleId: null,
   ...initialDerived,
 
   toggleSlideSwitch: (switchId) => {
@@ -209,6 +219,28 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     });
   },
 
+  toggleSound: () => set((s) => ({ soundEnabled: !s.soundEnabled })),
+
+  setHoveredSocketId: (socketId) =>
+    set((s) => ({
+      hoveredSocketId: socketId,
+      hoveredStandbyModuleId: socketId ? null : s.hoveredStandbyModuleId,
+    })),
+
+  setHoveredStandbyModuleId: (moduleId) => set({ hoveredStandbyModuleId: moduleId }),
+
+  resetInputs: () => {
+    const s = get();
+    const switches = makeDefaultSwitches();
+    const buttons = makeDefaultButtons();
+    set({
+      switches,
+      buttons,
+      latchedButtons: makeDefaultButtons(),
+      ...computeDerived(switches, buttons, s.wires, s.ttlFloatingIsHigh),
+    });
+  },
+
   exportCircuitJSON: () => {
     const s = get();
     const payload: SerializableCircuit = {
@@ -288,3 +320,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     });
   },
 }));
+
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).useSimulatorStore = useSimulatorStore;
+}

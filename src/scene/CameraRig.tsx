@@ -78,7 +78,7 @@ export function CameraRig() {
   useFrame((_, delta) => {
     if (!isTransitioningRef.current || !controlsRef.current) return;
 
-    const alpha = 1 - Math.exp(-8 * Math.min(delta, 0.05));
+    const alpha = 1 - Math.exp(-10 * Math.min(delta, 0.18));
     camera.position.lerp(goalPosRef.current, alpha);
     controlsRef.current.target.lerp(goalTargetRef.current, alpha);
     controlsRef.current.update();
