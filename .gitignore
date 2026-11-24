@@ -6,3 +6,4 @@ dist/
 docs/reference/
 .DS_Store
 Thumbs.db
+.vercel/

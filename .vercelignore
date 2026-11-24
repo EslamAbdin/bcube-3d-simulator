@@ -1,0 +1,5 @@
+*.pdf
+docs/reference/
+.git/
+node_modules/
+dist/
