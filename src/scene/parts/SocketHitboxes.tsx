@@ -9,6 +9,7 @@ import {
   type SocketSpec,
 } from '../../schema/boardSchema';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
+import { playWirePlug } from '../../utils/soundEffects';
 
 function buildPairedSocketMap(): Record<string, SocketSpec> {
   const byNode = new Map<string, SocketSpec[]>();
@@ -27,11 +28,35 @@ function buildPairedSocketMap(): Record<string, SocketSpec> {
   return map;
 }
 
+function resolvePickedSocket(
+  e: ThreeEvent<PointerEvent | MouseEvent>,
+  pairedSocketMap: Record<string, SocketSpec>
+): SocketSpec | null {
+  if (e.instanceId === undefined) return null;
+  const candidate = ALL_SOCKETS[e.instanceId];
+  if (!candidate) return null;
+
+  let picked = candidate;
+  const paired = pairedSocketMap[candidate.id];
+  if (paired) {
+    const distCand =
+      (e.point.x - candidate.position.x) ** 2 + (e.point.z - candidate.position.z) ** 2;
+    const distPair =
+      (e.point.x - paired.position.x) ** 2 + (e.point.z - paired.position.z) ** 2;
+    if (distPair < distCand) {
+      picked = paired;
+    }
+  }
+  return picked;
+}
+
 function ActiveSocketHitboxes() {
   const colliderRef = useRef<THREE.InstancedMesh>(null);
   const primaryRingRef = useRef<THREE.Mesh>(null);
+  const originRingRef = useRef<THREE.Mesh>(null);
 
   const hoveredSocketId = useSimulatorStore((s) => s.hoveredSocketId);
+  const pendingSocketId = useSimulatorStore((s) => s.pendingSocketId);
   const pairedSocketMap = useMemo(() => buildPairedSocketMap(), []);
 
   // Radius >= 0.145 ensures effortless clicking on both 3D and 2D views
@@ -66,28 +91,21 @@ function ActiveSocketHitboxes() {
   }, []);
 
   useFrame(({ clock }) => {
-    if (!primaryRingRef.current) return;
-    const s = 1.04 + Math.sin(clock.elapsedTime * 7) * 0.06;
-    primaryRingRef.current.scale.set(s, s, 1);
+    const t = clock.elapsedTime;
+    if (primaryRingRef.current) {
+      const s = 1.04 + Math.sin(t * 7) * 0.06;
+      primaryRingRef.current.scale.set(s, s, 1);
+    }
+    if (originRingRef.current) {
+      const s = 1.08 + Math.sin(t * 8.5) * 0.12;
+      originRingRef.current.scale.set(s, s, 1);
+    }
   });
 
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
-    if (e.instanceId === undefined) return;
-    const candidate = ALL_SOCKETS[e.instanceId];
-    if (!candidate) return;
-
-    let picked = candidate;
-    const paired = pairedSocketMap[candidate.id];
-    if (paired) {
-      const distCand =
-        (e.point.x - candidate.position.x) ** 2 + (e.point.z - candidate.position.z) ** 2;
-      const distPair =
-        (e.point.x - paired.position.x) ** 2 + (e.point.z - paired.position.z) ** 2;
-      if (distPair < distCand) {
-        picked = paired;
-      }
-    }
+    const picked = resolvePickedSocket(e, pairedSocketMap);
+    if (!picked) return;
 
     const store = useSimulatorStore.getState();
     if (store.hoveredSocketId !== picked.id) {
@@ -105,8 +123,39 @@ function ActiveSocketHitboxes() {
     document.body.style.cursor = 'auto';
   };
 
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    // Guard against completing/starting wires after camera drag/orbit
+    if (e.delta > 5) return;
+    e.stopPropagation();
+
+    const picked = resolvePickedSocket(e, pairedSocketMap);
+    if (!picked) return;
+
+    const store = useSimulatorStore.getState();
+    if (!store.pendingSocketId) {
+      store.startWiring(picked.id);
+      if (store.soundEnabled) {
+        playWirePlug();
+      }
+    } else {
+      const res = store.completeWiring(picked.id);
+      if (res.ok && store.soundEnabled) {
+        playWirePlug();
+      }
+    }
+  };
+
+  const handleContextMenu = (e: ThreeEvent<MouseEvent>) => {
+    const store = useSimulatorStore.getState();
+    if (!store.pendingSocketId) return;
+    e.stopPropagation();
+    e.nativeEvent.preventDefault();
+    store.cancelWiring();
+  };
+
   const hoveredPrimary = hoveredSocketId ? SOCKET_MAP[hoveredSocketId] : undefined;
   const hoveredPaired = hoveredPrimary ? pairedSocketMap[hoveredPrimary.id] : undefined;
+  const originSocket = pendingSocketId ? SOCKET_MAP[pendingSocketId] : undefined;
 
   return (
     <group name="active-socket-hitboxes">
@@ -117,9 +166,23 @@ function ActiveSocketHitboxes() {
         onPointerOver={handlePointerMove}
         onPointerMove={handlePointerMove}
         onPointerOut={handlePointerOut}
+        onClick={handleClick}
+        onContextMenu={handleContextMenu}
       />
 
-      {hoveredPrimary && (
+      {/* Pulsing gold origin ring when a wire starts at pendingSocketId */}
+      {originSocket && (
+        <mesh
+          ref={originRingRef}
+          position={[originSocket.position.x, originSocket.position.y + 0.011, originSocket.position.z]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <ringGeometry args={[0.088, 0.16, 24]} />
+          <meshBasicMaterial color="#facc15" toneMapped={false} transparent opacity={0.96} />
+        </mesh>
+      )}
+
+      {hoveredPrimary && hoveredPrimary.id !== pendingSocketId && (
         <mesh
           ref={primaryRingRef}
           position={[hoveredPrimary.position.x, hoveredPrimary.position.y + 0.008, hoveredPrimary.position.z]}
@@ -130,7 +193,7 @@ function ActiveSocketHitboxes() {
         </mesh>
       )}
 
-      {hoveredPaired && (
+      {hoveredPaired && hoveredPaired.id !== pendingSocketId && (
         <mesh
           position={[hoveredPaired.position.x, hoveredPaired.position.y + 0.007, hoveredPaired.position.z]}
           rotation={[-Math.PI / 2, 0, 0]}
@@ -197,8 +260,8 @@ function StandbyHoverZones() {
 }
 
 /**
- * Combines invisible active-socket raycast hitboxes (with paired dual-hole rings)
- * and standby module hover zones for clean bottom-HUD inspection.
+ * Combines invisible active-socket raycast hitboxes (hover + click-to-wire)
+ * and standby module hover zones for bottom-HUD inspection.
  */
 export function SocketHitboxes() {
   return (

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { BOARD_DIMENSIONS } from '../../schema/boardSchema';
+import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { createMainBoardTexture, useCanvasTexture } from '../textures/silkscreenGenerator';
 
 /**
@@ -84,7 +85,19 @@ export function BoardChassis() {
       </mesh>
 
       {/* Main silkscreen top plane at Y = 0.004 */}
-      <mesh position={[0, 0.004, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh
+        position={[0, 0.004, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow
+        onClick={(e) => {
+          if (e.delta > 5) return;
+          const store = useSimulatorStore.getState();
+          if (store.pendingSocketId || store.selectedWireId) {
+            e.stopPropagation();
+            store.cancelWiring();
+          }
+        }}
+      >
         <planeGeometry args={[width, depth]} />
         <meshStandardMaterial map={mainTex} roughness={0.42} metalness={0.05} />
       </mesh>

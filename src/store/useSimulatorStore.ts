@@ -3,6 +3,7 @@
    ========================================================================= */
 
 import { create } from 'zustand';
+import { PRESET_CIRCUITS } from '../data/presetCircuits';
 import {
   BUTTON_SWITCHES,
   SLIDE_SWITCHES,
@@ -35,6 +36,26 @@ export interface SerializableCircuit {
   wires: WireSpec[];
 }
 
+export interface ActivePresetInfo {
+  id: string;
+  name: string;
+  description: string;
+  controlsHint: string;
+}
+
+export interface StatusToast {
+  id: number;
+  message: string;
+  kind: 'info' | 'warning' | 'success';
+}
+
+interface CompactHashCircuit {
+  v: number;
+  s?: string[];
+  b?: string[];
+  w: Array<[string, string, string?]>;
+}
+
 interface SimulatorState {
   switches: Record<string, boolean>;
   buttons: Record<string, boolean>;
@@ -49,6 +70,10 @@ interface SimulatorState {
   soundEnabled: boolean;
   hoveredSocketId: string | null;
   hoveredStandbyModuleId: string | null;
+  pendingSocketId: string | null;
+  selectedWireId: string | null;
+  activePresetInfo: ActivePresetInfo | null;
+  statusToast: StatusToast | null;
 
   // Derived simulation state
   netStates: Record<string, SignalLevel>;
@@ -63,8 +88,14 @@ interface SimulatorState {
   addWire: (fromSocketId: string, toSocketId: string, color?: string) => boolean;
   removeWire: (wireId: string) => void;
   clearWires: () => void;
+  startWiring: (socketId: string) => void;
+  cancelWiring: () => void;
+  completeWiring: (targetSocketId: string) => { ok: boolean; reason?: 'self' | 'duplicate' | 'invalid' };
+  selectWire: (wireId: string | null) => void;
+  undoLastWire: () => boolean;
   setActiveWireColor: (hex: string) => void;
   setAutoCycleWireColor: (enabled: boolean) => void;
+  toggleAutoCycleWireColor: () => void;
   setCameraMode: (mode: CameraMode) => void;
   triggerCameraReset: () => void;
   setTtlFloatingIsHigh: (enabled: boolean) => void;
@@ -72,6 +103,12 @@ interface SimulatorState {
   setHoveredSocketId: (socketId: string | null) => void;
   setHoveredStandbyModuleId: (moduleId: string | null) => void;
   resetInputs: () => void;
+  loadPreset: (presetId: string) => boolean;
+  dismissPresetInfo: () => void;
+  showToast: (message: string, kind?: StatusToast['kind']) => void;
+  clearToast: () => void;
+  encodeCircuitToHash: () => string;
+  loadCircuitFromHash: (hash: string) => { ok: boolean; error?: string };
   exportCircuitJSON: () => string;
   importCircuitJSON: (json: string) => { ok: boolean; error?: string };
   resetBoard: () => void;
@@ -100,7 +137,61 @@ function computeDerived(
   };
 }
 
+function utf8ToBase64Url(str: string): string {
+  const bytes = new TextEncoder().encode(str);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64UrlToUtf8(b64url: string): string {
+  const pad = (4 - (b64url.length % 4)) % 4;
+  const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat(pad);
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 let wireCounter = 1;
+let toastCounter = 1;
+
+function nextWireId(): string {
+  return `W${Date.now()}_${wireCounter++}`;
+}
+
+function deduplicateValidWires(
+  candidates: Array<{ id?: unknown; fromSocketId?: unknown; toSocketId?: unknown; color?: unknown }>
+): WireSpec[] {
+  const validWires: WireSpec[] = [];
+  for (const w of candidates) {
+    if (
+      w &&
+      typeof w.fromSocketId === 'string' &&
+      typeof w.toSocketId === 'string' &&
+      w.fromSocketId !== w.toSocketId &&
+      SOCKET_MAP[w.fromSocketId] &&
+      SOCKET_MAP[w.toSocketId] &&
+      !validWires.some(
+        (vw) =>
+          (vw.fromSocketId === w.fromSocketId && vw.toSocketId === w.toSocketId) ||
+          (vw.fromSocketId === w.toSocketId && vw.toSocketId === w.fromSocketId)
+      )
+    ) {
+      validWires.push({
+        id: typeof w.id === 'string' && w.id ? w.id : nextWireId(),
+        fromSocketId: w.fromSocketId,
+        toSocketId: w.toSocketId,
+        color: typeof w.color === 'string' && w.color ? w.color : WIRE_COLORS[0].hex,
+      });
+    }
+  }
+  return validWires;
+}
 
 const initialSwitches = makeDefaultSwitches();
 const initialButtons = makeDefaultButtons();
@@ -120,6 +211,10 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   soundEnabled: true,
   hoveredSocketId: null,
   hoveredStandbyModuleId: null,
+  pendingSocketId: null,
+  selectedWireId: null,
+  activePresetInfo: null,
+  statusToast: null,
   ...initialDerived,
 
   toggleSlideSwitch: (switchId) => {
@@ -162,7 +257,6 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     if (fromSocketId === toSocketId) return false;
     if (!SOCKET_MAP[fromSocketId] || !SOCKET_MAP[toSocketId]) return false;
 
-    // Prevent duplicate wires connecting the exact same two sockets
     const exists = s.wires.some(
       (w) =>
         (w.fromSocketId === fromSocketId && w.toSocketId === toSocketId) ||
@@ -172,7 +266,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
 
     const chosenColor = color ?? s.activeWireColor;
     const nextWire: WireSpec = {
-      id: `W${Date.now()}_${wireCounter++}`,
+      id: nextWireId(),
       fromSocketId,
       toSocketId,
       color: chosenColor,
@@ -194,6 +288,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     if (wires.length === s.wires.length) return;
     set({
       wires,
+      selectedWireId: s.selectedWireId === wireId ? null : s.selectedWireId,
       ...computeDerived(s.switches, s.buttons, wires, s.ttlFloatingIsHigh),
     });
   },
@@ -202,12 +297,93 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     const s = get();
     set({
       wires: [],
+      pendingSocketId: null,
+      selectedWireId: null,
+      activePresetInfo: null,
       ...computeDerived(s.switches, s.buttons, [], s.ttlFloatingIsHigh),
     });
   },
 
-  setActiveWireColor: (hex) => set({ activeWireColor: hex }),
+  startWiring: (socketId) => {
+    if (!SOCKET_MAP[socketId]) return;
+    set({ pendingSocketId: socketId, selectedWireId: null });
+  },
+
+  cancelWiring: () => {
+    const s = get();
+    if (s.pendingSocketId === null && s.selectedWireId === null) return;
+    set({ pendingSocketId: null, selectedWireId: null });
+  },
+
+  completeWiring: (targetSocketId) => {
+    const s = get();
+    const fromId = s.pendingSocketId;
+    if (!fromId || !SOCKET_MAP[targetSocketId]) {
+      set({ pendingSocketId: null });
+      return { ok: false, reason: 'invalid' };
+    }
+    if (fromId === targetSocketId) {
+      set({
+        pendingSocketId: null,
+        statusToast: {
+          id: toastCounter++,
+          message: 'Cannot connect a socket to itself.',
+          kind: 'warning',
+        },
+      });
+      return { ok: false, reason: 'self' };
+    }
+    const exists = s.wires.some(
+      (w) =>
+        (w.fromSocketId === fromId && w.toSocketId === targetSocketId) ||
+        (w.fromSocketId === targetSocketId && w.toSocketId === fromId)
+    );
+    if (exists) {
+      set({
+        pendingSocketId: null,
+        statusToast: {
+          id: toastCounter++,
+          message: 'Wire already connects these two sockets.',
+          kind: 'warning',
+        },
+      });
+      return { ok: false, reason: 'duplicate' };
+    }
+
+    const ok = s.addWire(fromId, targetSocketId);
+    set({ pendingSocketId: null, selectedWireId: null });
+    return ok ? { ok: true } : { ok: false, reason: 'invalid' };
+  },
+
+  selectWire: (wireId) =>
+    set((s) => ({
+      selectedWireId: wireId,
+      pendingSocketId: wireId ? null : s.pendingSocketId,
+    })),
+
+  undoLastWire: () => {
+    const s = get();
+    if (s.wires.length === 0) return false;
+    const removed = s.wires[s.wires.length - 1];
+    const wires = s.wires.slice(0, -1);
+    set({
+      wires,
+      selectedWireId: s.selectedWireId === removed.id ? null : s.selectedWireId,
+      ...computeDerived(s.switches, s.buttons, wires, s.ttlFloatingIsHigh),
+    });
+    return true;
+  },
+
+  setActiveWireColor: (hex) => {
+    const idx = WIRE_COLORS.findIndex((c) => c.hex.toLowerCase() === hex.toLowerCase());
+    set((s) => ({
+      activeWireColor: hex,
+      wireColorIndex: idx >= 0 ? idx : s.wireColorIndex,
+    }));
+  },
+
   setAutoCycleWireColor: (enabled) => set({ autoCycleWireColor: enabled }),
+  toggleAutoCycleWireColor: () => set((s) => ({ autoCycleWireColor: !s.autoCycleWireColor })),
   setCameraMode: (mode) => set({ cameraMode: mode }),
   triggerCameraReset: () => set((s) => ({ cameraResetCount: s.cameraResetCount + 1 })),
 
@@ -241,6 +417,151 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     });
   },
 
+  loadPreset: (presetId) => {
+    if (presetId === 'empty') {
+      get().resetBoard();
+      set({
+        statusToast: { id: toastCounter++, message: 'Cleared board.', kind: 'info' },
+      });
+      return true;
+    }
+    const preset = PRESET_CIRCUITS.find((p) => p.id === presetId);
+    if (!preset) return false;
+
+    const s = get();
+    const switches = makeDefaultSwitches();
+    if (preset.initialSwitches) {
+      for (const [k, v] of Object.entries(preset.initialSwitches)) {
+        if (k in switches) switches[k] = Boolean(v);
+      }
+    }
+    const buttons = makeDefaultButtons();
+    const wires = deduplicateValidWires(preset.wires);
+    set({
+      switches,
+      buttons,
+      latchedButtons: makeDefaultButtons(),
+      wires,
+      pendingSocketId: null,
+      selectedWireId: null,
+      activePresetInfo: {
+        id: preset.id,
+        name: preset.name,
+        description: preset.description,
+        controlsHint: preset.controlsHint,
+      },
+      statusToast: {
+        id: toastCounter++,
+        message: `Loaded preset: ${preset.name}`,
+        kind: 'success',
+      },
+      ...computeDerived(switches, buttons, wires, s.ttlFloatingIsHigh),
+    });
+    return true;
+  },
+
+  dismissPresetInfo: () => set({ activePresetInfo: null }),
+
+  showToast: (message, kind = 'info') =>
+    set({
+      statusToast: {
+        id: toastCounter++,
+        message,
+        kind,
+      },
+    }),
+
+  clearToast: () => set({ statusToast: null }),
+
+  encodeCircuitToHash: () => {
+    const s = get();
+    const compact: CompactHashCircuit = {
+      v: 1,
+      s: Object.entries(s.switches)
+        .filter(([, val]) => val)
+        .map(([k]) => k),
+      b: Object.entries(s.buttons)
+        .filter(([, val]) => val)
+        .map(([k]) => k),
+      w: s.wires.map((w) => [w.fromSocketId, w.toSocketId, w.color]),
+    };
+    return `#circuit=${utf8ToBase64Url(JSON.stringify(compact))}`;
+  },
+
+  loadCircuitFromHash: (hash) => {
+    try {
+      const cleaned = hash.trim().replace(/^#/, '');
+      const payloadPart = cleaned.startsWith('circuit=') ? cleaned.slice('circuit='.length) : cleaned;
+      if (!payloadPart) {
+        return { ok: false, error: 'Empty circuit hash.' };
+      }
+      const parsed = JSON.parse(base64UrlToUtf8(payloadPart)) as
+        | Partial<CompactHashCircuit>
+        | Partial<SerializableCircuit>;
+      if (!parsed || typeof parsed !== 'object') {
+        return { ok: false, error: 'Invalid circuit hash payload.' };
+      }
+
+      const switches = makeDefaultSwitches();
+      const buttons = makeDefaultButtons();
+      let wires: WireSpec[] = [];
+
+      if ('w' in parsed && Array.isArray(parsed.w)) {
+        if (Array.isArray(parsed.s)) {
+          for (const k of parsed.s) {
+            if (typeof k === 'string' && k in switches) switches[k] = true;
+          }
+        }
+        if (Array.isArray(parsed.b)) {
+          for (const k of parsed.b) {
+            if (typeof k === 'string' && k in buttons) buttons[k] = true;
+          }
+        }
+        wires = deduplicateValidWires(
+          parsed.w.map((entry) =>
+            Array.isArray(entry)
+              ? { fromSocketId: entry[0], toSocketId: entry[1], color: entry[2] }
+              : {}
+          )
+        );
+      } else if ('wires' in parsed && Array.isArray(parsed.wires)) {
+        if (parsed.switches && typeof parsed.switches === 'object') {
+          for (const k of Object.keys(switches)) {
+            if (typeof parsed.switches[k] === 'boolean') switches[k] = parsed.switches[k];
+          }
+        }
+        if (parsed.buttons && typeof parsed.buttons === 'object') {
+          for (const k of Object.keys(buttons)) {
+            if (typeof parsed.buttons[k] === 'boolean') buttons[k] = parsed.buttons[k];
+          }
+        }
+        wires = deduplicateValidWires(parsed.wires);
+      } else {
+        return { ok: false, error: 'Unsupported circuit hash structure.' };
+      }
+
+      const s = get();
+      set({
+        switches,
+        buttons,
+        latchedButtons: { ...buttons },
+        wires,
+        pendingSocketId: null,
+        selectedWireId: null,
+        activePresetInfo: null,
+        statusToast: {
+          id: toastCounter++,
+          message: `Loaded shared circuit (${wires.length} ${wires.length === 1 ? 'wire' : 'wires'}).`,
+          kind: 'success',
+        },
+        ...computeDerived(switches, buttons, wires, s.ttlFloatingIsHigh),
+      });
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : 'Invalid circuit link.' };
+    }
+  },
+
   exportCircuitJSON: () => {
     const s = get();
     const payload: SerializableCircuit = {
@@ -270,35 +591,16 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
           if (typeof parsed.buttons[k] === 'boolean') buttons[k] = parsed.buttons[k];
         }
       }
-      const validWires: WireSpec[] = [];
-      for (const w of parsed.wires) {
-        if (
-          w &&
-          typeof w.fromSocketId === 'string' &&
-          typeof w.toSocketId === 'string' &&
-          w.fromSocketId !== w.toSocketId &&
-          SOCKET_MAP[w.fromSocketId] &&
-          SOCKET_MAP[w.toSocketId] &&
-          !validWires.some(
-            (vw) =>
-              (vw.fromSocketId === w.fromSocketId && vw.toSocketId === w.toSocketId) ||
-              (vw.fromSocketId === w.toSocketId && vw.toSocketId === w.fromSocketId)
-          )
-        ) {
-          validWires.push({
-            id: typeof w.id === 'string' && w.id ? w.id : `W_${wireCounter++}`,
-            fromSocketId: w.fromSocketId,
-            toSocketId: w.toSocketId,
-            color: typeof w.color === 'string' && w.color ? w.color : WIRE_COLORS[0].hex,
-          });
-        }
-      }
+      const validWires = deduplicateValidWires(parsed.wires);
       const s = get();
       set({
         switches,
         buttons,
         latchedButtons: { ...buttons },
         wires: validWires,
+        pendingSocketId: null,
+        selectedWireId: null,
+        activePresetInfo: null,
         ...computeDerived(switches, buttons, validWires, s.ttlFloatingIsHigh),
       });
       return { ok: true };
@@ -316,6 +618,9 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       buttons,
       latchedButtons: makeDefaultButtons(),
       wires: [],
+      pendingSocketId: null,
+      selectedWireId: null,
+      activePresetInfo: null,
       ...computeDerived(switches, buttons, [], s.ttlFloatingIsHigh),
     });
   },

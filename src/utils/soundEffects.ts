@@ -121,3 +121,69 @@ export function playButtonSnap(pressed: boolean, isLatchToggle = false): void {
     // Ignore transient Web Audio errors
   }
 }
+
+/** Soft snug insertion click when plugging a 3D jumper wire into a header hole. */
+export function playWirePlug(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+
+    const src = ctx.createBufferSource();
+    src.buffer = getNoiseBuffer(ctx);
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1900, now);
+    filter.Q.setValueAtTime(2.0, now);
+    const nGain = ctx.createGain();
+    nGain.gain.setValueAtTime(0.06, now);
+    nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.01);
+    src.connect(filter);
+    filter.connect(nGain);
+    nGain.connect(ctx.destination);
+    src.start(now);
+    src.stop(now + 0.012);
+
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(340, now);
+    osc.frequency.exponentialRampToValueAtTime(140, now + 0.024);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.11, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.024);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.026);
+  } catch {
+    // Ignore transient Web Audio errors
+  }
+}
+
+/** Light pop cue when removing or undoing a 3D jumper wire. */
+export function playWireUnplug(): void {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(260, now);
+    osc.frequency.exponentialRampToValueAtTime(540, now + 0.02);
+
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.022);
+  } catch {
+    // Ignore transient Web Audio errors
+  }
+}
