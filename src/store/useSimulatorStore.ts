@@ -44,6 +44,7 @@ interface SimulatorState {
   autoCycleWireColor: boolean;
   wireColorIndex: number;
   cameraMode: CameraMode;
+  cameraResetCount: number;
   ttlFloatingIsHigh: boolean;
 
   // Derived simulation state
@@ -62,6 +63,7 @@ interface SimulatorState {
   setActiveWireColor: (hex: string) => void;
   setAutoCycleWireColor: (enabled: boolean) => void;
   setCameraMode: (mode: CameraMode) => void;
+  triggerCameraReset: () => void;
   setTtlFloatingIsHigh: (enabled: boolean) => void;
   exportCircuitJSON: () => string;
   importCircuitJSON: (json: string) => { ok: boolean; error?: string };
@@ -106,6 +108,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   autoCycleWireColor: true,
   wireColorIndex: 0,
   cameraMode: '3d',
+  cameraResetCount: 0,
   ttlFloatingIsHigh: false,
   ...initialDerived,
 
@@ -196,6 +199,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   setActiveWireColor: (hex) => set({ activeWireColor: hex }),
   setAutoCycleWireColor: (enabled) => set({ autoCycleWireColor: enabled }),
   setCameraMode: (mode) => set({ cameraMode: mode }),
+  triggerCameraReset: () => set((s) => ({ cameraResetCount: s.cameraResetCount + 1 })),
 
   setTtlFloatingIsHigh: (enabled) => {
     const s = get();
