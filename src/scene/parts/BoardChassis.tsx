@@ -9,7 +9,6 @@ import { createMainBoardTexture, useCanvasTexture } from '../textures/silkscreen
  * protective dark-slate metallic perimeter bezel, bottom tray, and corner screws.
  */
 export const BoardChassis = memo(function BoardChassis() {
-  const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
   const mainTex = useCanvasTexture(createMainBoardTexture, []);
   const screwRef = useRef<THREE.InstancedMesh>(null);
   const footRef = useRef<THREE.InstancedMesh>(null);
@@ -80,7 +79,7 @@ export const BoardChassis = memo(function BoardChassis() {
   return (
     <group name="board-chassis">
       {/* Main 44 × 0.4 × 29 PCB slab (top surface strictly at Y = 0.00) */}
-      <mesh position={[0, -thickness / 2, 0]} receiveShadow={isHighPerf} castShadow={isHighPerf}>
+      <mesh position={[0, -thickness / 2, 0]}>
         <boxGeometry args={[width, thickness, depth]} />
         <meshStandardMaterial color="#0a598c" roughness={0.55} metalness={0.05} />
       </mesh>
@@ -89,7 +88,6 @@ export const BoardChassis = memo(function BoardChassis() {
       <mesh
         position={[0, 0.004, 0]}
         rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow={isHighPerf}
         onClick={(e) => {
           if (e.delta > 5) return;
           const store = useSimulatorStore.getState();
@@ -106,35 +104,35 @@ export const BoardChassis = memo(function BoardChassis() {
       {/* Protective metallic dark-slate perimeter bezel rails */}
       <group name="bezel-frame">
         {/* Top rail */}
-        <mesh position={[0, -0.22, -depth / 2 - railThickness / 2]} castShadow={isHighPerf} receiveShadow={isHighPerf}>
+        <mesh position={[0, -0.22, -depth / 2 - railThickness / 2]}>
           <boxGeometry args={[bezelOuterW, 0.56, railThickness]} />
           <meshStandardMaterial color="#1e293b" roughness={0.38} metalness={0.6} />
         </mesh>
         {/* Bottom rail */}
-        <mesh position={[0, -0.22, depth / 2 + railThickness / 2]} castShadow={isHighPerf} receiveShadow={isHighPerf}>
+        <mesh position={[0, -0.22, depth / 2 + railThickness / 2]}>
           <boxGeometry args={[bezelOuterW, 0.56, railThickness]} />
           <meshStandardMaterial color="#1e293b" roughness={0.38} metalness={0.6} />
         </mesh>
         {/* Left rail */}
-        <mesh position={[-width / 2 - railThickness / 2, -0.22, 0]} castShadow={isHighPerf} receiveShadow={isHighPerf}>
+        <mesh position={[-width / 2 - railThickness / 2, -0.22, 0]}>
           <boxGeometry args={[railThickness, 0.56, depth]} />
           <meshStandardMaterial color="#1e293b" roughness={0.38} metalness={0.6} />
         </mesh>
         {/* Right rail */}
-        <mesh position={[width / 2 + railThickness / 2, -0.22, 0]} castShadow={isHighPerf} receiveShadow={isHighPerf}>
+        <mesh position={[width / 2 + railThickness / 2, -0.22, 0]}>
           <boxGeometry args={[railThickness, 0.56, depth]} />
           <meshStandardMaterial color="#1e293b" roughness={0.38} metalness={0.6} />
         </mesh>
         {/* Bottom chassis base plate */}
-        <mesh position={[0, -0.45, 0]} receiveShadow={isHighPerf} castShadow={isHighPerf}>
+        <mesh position={[0, -0.45, 0]}>
           <boxGeometry args={[bezelOuterW - 0.2, 0.1, bezelOuterD - 0.2]} />
           <meshStandardMaterial color="#0f172a" roughness={0.6} metalness={0.4} />
         </mesh>
       </group>
 
       {/* Corner screws & rubber feet */}
-      <instancedMesh ref={screwRef} args={[screwGeo, screwMat, 4]} castShadow={isHighPerf} />
-      <instancedMesh ref={footRef} args={[footGeo, footMat, 4]} castShadow={isHighPerf} />
+      <instancedMesh ref={screwRef} args={[screwGeo, screwMat, 4]} />
+      <instancedMesh ref={footRef} args={[footGeo, footMat, 4]} />
     </group>
   );
 });

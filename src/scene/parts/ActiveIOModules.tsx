@@ -55,10 +55,8 @@ const LED_METAL_MAT = new THREE.MeshStandardMaterial({ color: '#cbd5e1', roughne
 
 const InteractiveSlideSwitch = memo(function InteractiveSlideSwitch({
   sw,
-  castShadow,
 }: {
   sw: SlideSwitchControlSpec;
-  castShadow: boolean;
 }) {
   const isOn = useSimulatorStore((s) => Boolean(s.switches[sw.id]));
   const [hovered, setHovered] = useState(false);
@@ -130,7 +128,7 @@ const InteractiveSlideSwitch = memo(function InteractiveSlideSwitch({
 
       {/* Animated slider nub */}
       <group ref={nubRef} position={[0, 0.22, 0.23]}>
-        <mesh geometry={SW_NUB_GEO} material={SW_NUB_MAT} castShadow={castShadow} />
+        <mesh geometry={SW_NUB_GEO} material={SW_NUB_MAT} />
         {/* High-contrast top nub bar */}
         <mesh position={[0, 0.104, 0]} geometry={SW_NUB_TOP_GEO}>
           <meshStandardMaterial
@@ -158,10 +156,8 @@ const InteractiveSlideSwitch = memo(function InteractiveSlideSwitch({
 
 const InteractiveButtonSwitch = memo(function InteractiveButtonSwitch({
   btn,
-  castShadow,
 }: {
   btn: ButtonSwitchControlSpec;
-  castShadow: boolean;
 }) {
   const isPressed = useSimulatorStore((s) => Boolean(s.buttons[btn.id]));
   const isLatched = useSimulatorStore((s) => Boolean(s.latchedButtons[btn.id]));
@@ -278,7 +274,7 @@ const InteractiveButtonSwitch = memo(function InteractiveButtonSwitch({
 
       {/* Animated tactile off-white square pushbutton cap */}
       <group ref={capGroupRef} position={[0, 0.2, 0]}>
-        <mesh geometry={BTN_CAP_GEO} castShadow={castShadow} receiveShadow={castShadow}>
+        <mesh geometry={BTN_CAP_GEO}>
           <meshStandardMaterial
             color={isLatched ? '#e0f2fe' : hovered ? '#ffffff' : '#f1f5f9'}
             roughness={0.34}
@@ -383,7 +379,7 @@ const ReactiveLed = memo(function ReactiveLed({
       </mesh>
 
       {/* 5mm water-clear acrylic LED body (crystal clear when OFF, glowing color when HIGH) */}
-      <mesh position={[0, 0.16, 0]} geometry={LED_BODY_GEO} castShadow={isHighPerf}>
+      <mesh position={[0, 0.16, 0]} geometry={LED_BODY_GEO}>
         <meshStandardMaterial
           ref={bodyMatRef}
           color={lensColor}
@@ -518,15 +514,13 @@ export const ActiveIOModules = memo(function ActiveIOModules() {
         <instancedMesh
           ref={swFrameRef}
           args={[SW_FRAME_GEO, SW_FRAME_MAT, SLIDE_SWITCHES.length]}
-          castShadow={isHighPerf}
-          receiveShadow={isHighPerf}
         />
         <instancedMesh
           ref={swTrackRef}
           args={[SW_TRACK_GEO, SW_TRACK_MAT, SLIDE_SWITCHES.length]}
         />
         {SLIDE_SWITCHES.map((sw) => (
-          <InteractiveSlideSwitch key={sw.id} sw={sw} castShadow={isHighPerf} />
+          <InteractiveSlideSwitch key={sw.id} sw={sw} />
         ))}
       </group>
 
@@ -534,11 +528,9 @@ export const ActiveIOModules = memo(function ActiveIOModules() {
         <instancedMesh
           ref={btnBezelRef}
           args={[BTN_BEZEL_GEO, BTN_BEZEL_MAT, BUTTON_SWITCHES.length]}
-          castShadow={isHighPerf}
-          receiveShadow={isHighPerf}
         />
         {BUTTON_SWITCHES.map((btn) => (
-          <InteractiveButtonSwitch key={btn.id} btn={btn} castShadow={isHighPerf} />
+          <InteractiveButtonSwitch key={btn.id} btn={btn} />
         ))}
       </group>
 
@@ -546,8 +538,6 @@ export const ActiveIOModules = memo(function ActiveIOModules() {
         <instancedMesh
           ref={ledCollarRef}
           args={[LED_COLLAR_GEO, LED_COLLAR_MAT, LED_INDICATORS.length]}
-          castShadow={isHighPerf}
-          receiveShadow={isHighPerf}
         />
         <instancedMesh
           ref={ledPostRef}

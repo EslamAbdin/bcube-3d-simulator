@@ -39,9 +39,9 @@ describe('bCube Hardware Board Schema', () => {
     expect(BOARD_DIMENSIONS.dualHolePitch).toBeCloseTo(0.254, 4);
 
     const centerMods = ALL_MODULES.filter((m) => m.zone === 'center_grid');
-    expect(centerMods).toHaveLength(20);
+    expect(centerMods).toHaveLength(21);
     expect(centerMods.filter((m) => m.status === 'active')).toHaveLength(6);
-    expect(centerMods.filter((m) => m.status === 'standby')).toHaveLength(14);
+    expect(centerMods.filter((m) => m.status === 'standby')).toHaveLength(15);
 
     expect(findOverlappingModules(ALL_MODULES)).toEqual([]);
 

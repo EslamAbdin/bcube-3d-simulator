@@ -10,6 +10,7 @@ import {
 import type { SignalLevel } from '../engine/gateEvaluators';
 import { useSimulatorStore } from '../store/useSimulatorStore';
 import { playSlideClick, playWirePlug, playWireUnplug } from '../utils/soundEffects';
+import { TimingDiagramView } from './TimingDiagramView';
 
 const STORAGE_KEY = 'bcube_completed_challenges_v1';
 
@@ -146,7 +147,9 @@ export const LabDrawer = memo(function LabDrawer() {
   return (
     <aside
       aria-label="Lab Workbench Drawer"
-      className="pointer-events-auto fixed inset-x-2 top-14 bottom-20 z-30 flex w-auto flex-col overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/92 text-slate-100 shadow-2xl backdrop-blur-lg sm:inset-x-auto sm:right-3 sm:bottom-16 sm:w-[395px]"
+      className={`pointer-events-auto fixed inset-x-2 top-14 bottom-20 z-30 flex w-auto flex-col overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/92 text-slate-100 shadow-2xl backdrop-blur-lg sm:inset-x-auto sm:right-3 sm:bottom-16 ${
+        activeDrawerTab === 'timing' ? 'sm:w-[540px] lg:w-[600px]' : 'sm:w-[395px]'
+      }`}
     >
       {/* Drawer Tabs Header */}
       <div className="flex items-center justify-between border-b border-slate-700/80 bg-slate-950/60 px-3 py-2">
@@ -154,7 +157,7 @@ export const LabDrawer = memo(function LabDrawer() {
           <button
             type="button"
             onClick={() => setActiveDrawerTab('truth-table')}
-            className={`cursor-pointer rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+            className={`cursor-pointer rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
               activeDrawerTab === 'truth-table'
                 ? 'bg-sky-500 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white'
@@ -164,14 +167,25 @@ export const LabDrawer = memo(function LabDrawer() {
           </button>
           <button
             type="button"
+            onClick={() => setActiveDrawerTab('timing')}
+            className={`cursor-pointer rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
+              activeDrawerTab === 'timing'
+                ? 'bg-sky-500 text-white shadow-sm'
+                : 'text-slate-300 hover:text-white'
+            }`}
+          >
+            Timing
+          </button>
+          <button
+            type="button"
             onClick={() => setActiveDrawerTab('challenges')}
-            className={`cursor-pointer rounded-md px-3 py-1 text-xs font-semibold transition-colors ${
+            className={`cursor-pointer rounded-md px-2.5 py-1 text-xs font-semibold transition-colors ${
               activeDrawerTab === 'challenges'
                 ? 'bg-sky-500 text-white shadow-sm'
                 : 'text-slate-300 hover:text-white'
             }`}
           >
-            Lab Challenges ({completedIds.length}/{LAB_CHALLENGES.length})
+            Challenges ({completedIds.length}/{LAB_CHALLENGES.length})
           </button>
         </div>
 
@@ -187,7 +201,9 @@ export const LabDrawer = memo(function LabDrawer() {
 
       {/* Tab Body */}
       <div className="flex-1 overflow-y-auto p-3.5">
-        {activeDrawerTab === 'truth-table' ? (
+        {activeDrawerTab === 'timing' ? (
+          <TimingDiagramView />
+        ) : activeDrawerTab === 'truth-table' ? (
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-2">
               <div>

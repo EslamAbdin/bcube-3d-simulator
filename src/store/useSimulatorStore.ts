@@ -8,6 +8,7 @@ import {
   BUTTON_SWITCHES,
   SLIDE_SWITCHES,
   SOCKET_MAP,
+  type ActiveGateModuleType,
 } from '../schema/boardSchema';
 import {
   runSimulation,
@@ -18,10 +19,31 @@ import {
 import type { SignalLevel } from '../engine/gateEvaluators';
 
 export type CameraMode = '3d' | '2d';
-export type DrawerTab = 'truth-table' | 'challenges' | null;
+export type DrawerTab = 'truth-table' | 'timing' | 'challenges' | null;
 export type PerformanceMode = 'high' | 'eco';
+export type TeachingLanguage = 'en' | 'ar';
 
 const PERF_MODE_STORAGE_KEY = 'bcube_perf_mode_v1';
+const TEACHING_LANG_STORAGE_KEY = 'bcube_teaching_lang_v1';
+
+function readInitialTeachingLang(): TeachingLanguage {
+  if (typeof window === 'undefined') return 'en';
+  try {
+    const saved = window.localStorage.getItem(TEACHING_LANG_STORAGE_KEY);
+    return saved === 'ar' || saved === 'en' ? saved : 'en';
+  } catch {
+    return 'en';
+  }
+}
+
+function persistTeachingLang(lang: TeachingLanguage): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(TEACHING_LANG_STORAGE_KEY, lang);
+  } catch {
+    // Ignore storage quota/privacy mode failures
+  }
+}
 
 function readInitialPerformanceMode(): PerformanceMode {
   if (typeof window === 'undefined') return 'high';
@@ -108,6 +130,10 @@ interface SimulatorState {
   activeDrawerTab: DrawerTab;
   helpModalOpen: boolean;
   performanceMode: PerformanceMode;
+  teachingMode: boolean;
+  teachingLang: TeachingLanguage;
+  inspectedIcType: ActiveGateModuleType | null;
+  hoveredIcType: ActiveGateModuleType | null;
 
   // Derived simulation state
   netStates: Record<string, SignalLevel>;
@@ -140,9 +166,19 @@ interface SimulatorState {
   applyInputVector: (inputBits: Record<string, 0 | 1>) => void;
   toggleSignalFlow: () => void;
   setActiveDrawerTab: (tab: DrawerTab) => void;
-  toggleDrawerTab: (tab: 'truth-table' | 'challenges') => void;
+  toggleDrawerTab: (tab: Exclude<DrawerTab, null>) => void;
   setHelpModalOpen: (open: boolean) => void;
   togglePerformanceMode: () => void;
+  toggleTeachingMode: () => void;
+  setTeachingMode: (enabled: boolean) => void;
+  setTeachingLang: (lang: TeachingLanguage) => void;
+  setInspectedIcType: (icType: ActiveGateModuleType | null) => void;
+  setHoveredIcType: (icType: ActiveGateModuleType | null) => void;
+  loadTeachingDemo: (
+    wires: WireSpec[],
+    initialSwitches?: Record<string, boolean>,
+    info?: ActivePresetInfo | null
+  ) => void;
   loadPreset: (presetId: string) => boolean;
   dismissPresetInfo: () => void;
   showToast: (message: string, kind?: StatusToast['kind']) => void;
@@ -259,6 +295,10 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   activeDrawerTab: null,
   helpModalOpen: false,
   performanceMode: readInitialPerformanceMode(),
+  teachingMode: false,
+  teachingLang: readInitialTeachingLang(),
+  inspectedIcType: null,
+  hoveredIcType: null,
   ...initialDerived,
 
   toggleSlideSwitch: (switchId) => {
@@ -495,6 +535,48 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       persistPerformanceMode(next);
       return { performanceMode: next };
     }),
+
+  toggleTeachingMode: () =>
+    set((s) => {
+      const next = !s.teachingMode;
+      const isNarrow = typeof window !== 'undefined' && window.innerWidth < 1024;
+      return {
+        teachingMode: next,
+        activeDrawerTab: next && isNarrow ? null : s.activeDrawerTab,
+      };
+    }),
+
+  setTeachingMode: (enabled) => set({ teachingMode: enabled }),
+
+  setTeachingLang: (lang) => {
+    persistTeachingLang(lang);
+    set({ teachingLang: lang });
+  },
+
+  setInspectedIcType: (icType) => set({ inspectedIcType: icType }),
+  setHoveredIcType: (icType) => set({ hoveredIcType: icType }),
+
+  loadTeachingDemo: (rawWires, initialSwitches, info = null) => {
+    const s = get();
+    const switches = makeDefaultSwitches();
+    if (initialSwitches) {
+      for (const [k, v] of Object.entries(initialSwitches)) {
+        if (k in switches) switches[k] = Boolean(v);
+      }
+    }
+    const buttons = makeDefaultButtons();
+    const wires = deduplicateValidWires(rawWires);
+    set({
+      switches,
+      buttons,
+      latchedButtons: makeDefaultButtons(),
+      wires,
+      pendingSocketId: null,
+      selectedWireId: null,
+      activePresetInfo: info,
+      ...computeDerived(switches, buttons, wires, s.ttlFloatingIsHigh),
+    });
+  },
 
   loadPreset: (presetId) => {
     if (presetId === 'empty') {

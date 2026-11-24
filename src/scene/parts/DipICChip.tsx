@@ -1,5 +1,7 @@
-import { memo, useLayoutEffect, useRef } from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
+import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { createIcTopTexture, useCanvasTexture } from '../textures/silkscreenGenerator';
 
 export interface DipICChipProps {
@@ -10,7 +12,8 @@ export interface DipICChipProps {
   width?: number;
   height?: number;
   dimmed?: boolean;
-  castShadow?: boolean;
+  onInspect?: () => void;
+  onHoverChange?: (hovered: boolean) => void;
 }
 
 const SHARED_SHOULDER_GEO = new THREE.BoxGeometry(0.055, 0.025, 0.09);
@@ -50,15 +53,53 @@ export const DipICChip = memo(function DipICChip({
   width = 0.44,
   height = 0.22,
   dimmed = false,
-  castShadow = true,
+  onInspect,
+  onHoverChange,
 }: DipICChipProps) {
   const pinsPerSide = pinCount / 2;
   const shoulderRef = useRef<THREE.InstancedMesh>(null);
   const legRef = useRef<THREE.InstancedMesh>(null);
+  const [hovered, setHovered] = useState(false);
 
   const topTex = useCanvasTexture(() => createIcTopTexture(label), [label]);
   const pinMat = dimmed ? SHARED_PIN_MAT_DIMMED : SHARED_PIN_MAT_ACTIVE;
   const bodyMat = dimmed ? SHARED_BODY_MAT_DIMMED : SHARED_BODY_MAT_ACTIVE;
+
+  useEffect(() => {
+    return () => {
+      if (hovered) {
+        document.body.style.cursor = 'auto';
+        onHoverChange?.(false);
+      }
+    };
+  }, [hovered, onHoverChange]);
+
+  const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
+    if (!onInspect) return;
+    e.stopPropagation();
+    if (!hovered) {
+      setHovered(true);
+      document.body.style.cursor = 'pointer';
+      onHoverChange?.(true);
+    }
+  };
+
+  const handlePointerOut = (e: ThreeEvent<PointerEvent>) => {
+    if (!onInspect) return;
+    e.stopPropagation();
+    if (hovered) {
+      setHovered(false);
+      document.body.style.cursor = 'auto';
+      onHoverChange?.(false);
+    }
+  };
+
+  const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    if (!onInspect || e.delta > 8) return;
+    e.stopPropagation();
+    if (useSimulatorStore.getState().pendingSocketId) return;
+    onInspect();
+  };
 
   useLayoutEffect(() => {
     const shoulderMesh = shoulderRef.current;
@@ -99,7 +140,13 @@ export const DipICChip = memo(function DipICChip({
   return (
     <group position={position} name={`dip-ic-${label}`}>
       {/* Matte black epoxy body */}
-      <mesh position={[0, bodyCenterY, 0]} material={bodyMat} castShadow={castShadow} receiveShadow={castShadow}>
+      <mesh
+        position={[0, bodyCenterY, 0]}
+        material={bodyMat}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+        onClick={handleClick}
+      >
         <boxGeometry args={[length, height, width]} />
       </mesh>
 
@@ -111,10 +158,30 @@ export const DipICChip = memo(function DipICChip({
       />
 
       {/* Top laser-etched IC code */}
-      <mesh position={[0, bodyTopY + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh
+        position={[0, bodyTopY + 0.002, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        onPointerOver={handlePointerOver}
+        onPointerOut={handlePointerOut}
+        onClick={handleClick}
+      >
         <planeGeometry args={[length * 0.88, width * 0.84]} />
         <meshStandardMaterial map={topTex} roughness={0.5} metalness={0.1} />
       </mesh>
+
+      {/* Crisp hover highlight perimeter (mounted only while hovered) */}
+      {hovered && onInspect && (
+        <mesh position={[0, bodyTopY + 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[length + 0.08, width + 0.08]} />
+          <meshBasicMaterial
+            color="#38bdf8"
+            transparent
+            opacity={0.28}
+            toneMapped={false}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
 
       {/* Metallic side pins (omit tiny pin shadow-map passes to save 40+ draw calls) */}
       <instancedMesh ref={shoulderRef} args={[SHARED_SHOULDER_GEO, pinMat, pinCount]} />

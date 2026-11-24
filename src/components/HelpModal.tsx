@@ -90,6 +90,11 @@ export function HelpModal() {
                 <strong>7402 NOR PCB Routing:</strong> All gate inputs are routed to the{' '}
                 <strong>LEFT</strong> header and outputs to the <strong>RIGHT</strong> header.
               </li>
+              <li>
+                <strong>Click Any Black IC Chip:</strong> Click/tap <code>SN74LSxxN</code> chips to
+                inspect the internal DIP-14 schematic, live pin wiring, truth table, and Boolean
+                equation.
+              </li>
             </ul>
           </section>
 

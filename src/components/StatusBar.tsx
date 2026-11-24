@@ -1,6 +1,8 @@
 import { memo, useEffect } from 'react';
+import { IC_DATASHEETS } from '../data/icDatasheets';
+import { describeSignalForTeaching } from '../data/teachingContent';
 import type { SignalLevel } from '../engine/gateEvaluators';
-import { MODULE_MAP, SOCKET_MAP } from '../schema/boardSchema';
+import { SOCKET_MAP } from '../schema/boardSchema';
 import { useSimulatorStore } from '../store/useSimulatorStore';
 import { playWireUnplug } from '../utils/soundEffects';
 
@@ -23,9 +25,11 @@ const TOAST_CLASSES = {
  */
 export const StatusBar = memo(function StatusBar() {
   const hoveredSocketId = useSimulatorStore((s) => s.hoveredSocketId);
-  const hoveredStandbyModuleId = useSimulatorStore((s) => s.hoveredStandbyModuleId);
+  const hoveredIcType = useSimulatorStore((s) => s.hoveredIcType);
   const pendingSocketId = useSimulatorStore((s) => s.pendingSocketId);
   const selectedWireId = useSimulatorStore((s) => s.selectedWireId);
+  const teachingMode = useSimulatorStore((s) => s.teachingMode);
+  const teachingLang = useSimulatorStore((s) => s.teachingLang);
   const hoveredSignal = useSimulatorStore<SignalLevel>((s) =>
     s.hoveredSocketId ? (s.socketStates[s.hoveredSocketId] ?? 'FLOATING') : 'FLOATING'
   );
@@ -42,7 +46,6 @@ export const StatusBar = memo(function StatusBar() {
   }, [statusToast, clearToast]);
 
   const hoveredSocket = hoveredSocketId ? SOCKET_MAP[hoveredSocketId] : undefined;
-  const hoveredStandby = hoveredStandbyModuleId ? MODULE_MAP[hoveredStandbyModuleId] : undefined;
   const originSocket = pendingSocketId ? SOCKET_MAP[pendingSocketId] : undefined;
 
   return (
@@ -72,7 +75,7 @@ export const StatusBar = memo(function StatusBar() {
         </div>
       )}
 
-      {activePresetInfo && !pendingSocketId && (
+      {activePresetInfo && !pendingSocketId && !teachingMode && (
         <div className="pointer-events-auto flex items-center gap-2.5 rounded-full border border-sky-500/40 bg-slate-900/85 px-3.5 py-1 text-xs text-slate-200 shadow-xl backdrop-blur-md">
           <span className="font-semibold text-sky-300">{activePresetInfo.name}:</span>
           <span className="text-slate-300">{activePresetInfo.controlsHint}</span>
@@ -118,7 +121,7 @@ export const StatusBar = memo(function StatusBar() {
             <span
               className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${SIGNAL_BADGE_CLASSES[hoveredSignal]}`}
             >
-              {hoveredSignal}
+              {teachingMode ? describeSignalForTeaching(hoveredSignal, teachingLang) : hoveredSignal}
             </span>
           </>
         ) : selectedWireId ? (
@@ -143,12 +146,17 @@ export const StatusBar = memo(function StatusBar() {
               Deselect
             </button>
           </>
-        ) : hoveredStandby ? (
+        ) : hoveredIcType ? (
           <>
-            <span className="font-medium text-slate-200">{hoveredStandby.label}</span>
+            <span className="font-semibold text-sky-200">
+              {IC_DATASHEETS[hoveredIcType].partNumber} ({IC_DATASHEETS[hoveredIcType].chipShort}{' '}
+              {IC_DATASHEETS[hoveredIcType].gateName})
+            </span>
             <span className="text-slate-500">•</span>
-            <span className="rounded-full border border-slate-600/70 bg-slate-800/90 px-2 py-0.5 text-[11px] font-medium text-slate-300">
-              Standby (Coming in v2)
+            <span className="text-slate-300">
+              {teachingMode && teachingLang === 'ar'
+                ? 'اضغط على الشريحة لعرض التوصيل الداخلي والمعادلة'
+                : 'Click IC chip to view internal pinout, live wiring & equation'}
             </span>
           </>
         ) : (

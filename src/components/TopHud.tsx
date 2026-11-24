@@ -45,6 +45,9 @@ export const TopHud = memo(function TopHud() {
   const toggleSound = useSimulatorStore((s) => s.toggleSound);
   const performanceMode = useSimulatorStore((s) => s.performanceMode);
   const togglePerformanceMode = useSimulatorStore((s) => s.togglePerformanceMode);
+  const teachingMode = useSimulatorStore((s) => s.teachingMode);
+  const teachingLang = useSimulatorStore((s) => s.teachingLang);
+  const toggleTeachingMode = useSimulatorStore((s) => s.toggleTeachingMode);
 
   useEffect(() => {
     if (!fileMenuOpen && !mobileMenuOpen) return;
@@ -196,6 +199,19 @@ export const TopHud = memo(function TopHud() {
 
             <button
               type="button"
+              onClick={toggleTeachingMode}
+              aria-pressed={teachingMode}
+              className={`cursor-pointer rounded-md border px-1.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                teachingMode
+                  ? 'border-emerald-400/75 bg-emerald-500/25 text-emerald-200'
+                  : 'border-slate-700/80 bg-slate-800/80 text-slate-200'
+              }`}
+            >
+              {teachingMode && teachingLang === 'ar' ? 'شرح' : 'Teach'}
+            </button>
+
+            <button
+              type="button"
               onClick={toggleSignalFlow}
               aria-pressed={signalFlowEnabled}
               className={`cursor-pointer rounded-md border px-1.5 py-0.5 text-[11px] font-semibold transition-colors ${
@@ -273,7 +289,7 @@ export const TopHud = memo(function TopHud() {
             </div>
 
             {/* Study Tabs & Reset */}
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
                 onClick={() => {
@@ -287,6 +303,20 @@ export const TopHud = memo(function TopHud() {
                 }`}
               >
                 Truth Table
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleDrawerTab('timing');
+                  setMobileMenuOpen(false);
+                }}
+                className={`cursor-pointer rounded-lg border px-2 py-1.5 text-xs font-semibold ${
+                  activeDrawerTab === 'timing'
+                    ? 'border-sky-400/70 bg-sky-500/25 text-sky-200'
+                    : 'border-slate-700/80 bg-slate-800/80 text-slate-200'
+                }`}
+              >
+                Timing
               </button>
               <button
                 type="button"
@@ -574,8 +604,22 @@ export const TopHud = memo(function TopHud() {
         </button>
       </div>
 
-      {/* Right: Study Workbench Tabs, Camera Mode, TTL, Perf, Sound & Help */}
+      {/* Right: Study Workbench Tabs, Teaching Mode, Camera Mode, TTL, Perf, Sound & Help */}
       <div className={pillClass}>
+        <button
+          type="button"
+          onClick={toggleTeachingMode}
+          aria-pressed={teachingMode}
+          title="Toggle Bilingual Teaching Mode (Simple English / عربي)"
+          className={`cursor-pointer whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors ${
+            teachingMode
+              ? 'border-emerald-400/75 bg-emerald-500/25 text-emerald-200 shadow-[0_0_10px_rgba(52,211,153,0.28)]'
+              : 'border-slate-700/80 bg-slate-800/80 text-emerald-300 hover:border-emerald-400/60'
+          }`}
+        >
+          {teachingMode && teachingLang === 'ar' ? 'تعلّم' : 'Teach'}
+        </button>
+
         <button
           type="button"
           onClick={() => toggleDrawerTab('truth-table')}
@@ -587,6 +631,20 @@ export const TopHud = memo(function TopHud() {
           }`}
         >
           Truth Table
+        </button>
+
+        <button
+          type="button"
+          onClick={() => toggleDrawerTab('timing')}
+          aria-pressed={activeDrawerTab === 'timing'}
+          title="Pin Timing Diagram (Input, IC Gate & Output Waveforms)"
+          className={`cursor-pointer whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors ${
+            activeDrawerTab === 'timing'
+              ? 'border-sky-400/70 bg-sky-500/25 text-sky-200'
+              : 'border-slate-700/80 bg-slate-800/80 text-slate-200 hover:border-slate-500'
+          }`}
+        >
+          Timing
         </button>
 
         <button
@@ -612,7 +670,7 @@ export const TopHud = memo(function TopHud() {
                 : 'text-slate-300 hover:text-white'
             }`}
           >
-            3D View
+            3D
           </button>
           <button
             type="button"
@@ -623,7 +681,7 @@ export const TopHud = memo(function TopHud() {
                 : 'text-slate-300 hover:text-white'
             }`}
           >
-            2D View (V)
+            2D (V)
           </button>
         </div>
 
@@ -655,8 +713,8 @@ export const TopHud = memo(function TopHud() {
           aria-pressed={performanceMode === 'eco'}
           title={
             performanceMode === 'high'
-              ? 'Graphics: High Quality (DPR 1.5 + soft shadows). Click for Eco / Laptop 60 FPS mode.'
-              : 'Graphics: Eco / Laptop Mode (DPR 1, shadows off for 60 FPS). Click for High Quality.'
+              ? 'Graphics: High Quality (DPR 1.5, smooth wire curves). Click for Eco / Phone 60 FPS mode.'
+              : 'Graphics: Eco / Phone Mode (DPR 1, lightweight curves for 60 FPS). Click for High Quality.'
           }
           className={`cursor-pointer whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] font-semibold transition-colors ${
             performanceMode === 'eco'

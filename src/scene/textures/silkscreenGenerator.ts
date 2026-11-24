@@ -12,6 +12,7 @@ import {
   BUTTON_SWITCHES,
   LED_INDICATORS,
   SLIDE_SWITCHES,
+  getGateModuleLayout,
   type ActiveGateModuleType,
   type BoardModuleSpec,
 } from '../../schema/boardSchema';
@@ -185,30 +186,33 @@ export function createMainBoardTexture(): THREE.CanvasTexture {
   drawRoundedRect(ctx, insetX, insetY, frameW, frameH, 16);
   ctx.stroke();
 
-  // Module outlines & section headers
+  // Module outlines & section headers (standby/unimplemented regions blacked out cleanly)
   for (const mod of ALL_MODULES) {
     const x = toPx(mod.bounds.minX);
     const y = toPy(mod.bounds.minZ);
     const w = scaleX(mod.size.width);
     const h = scaleY(mod.size.depth);
 
-    if (!mod.isDaughterModule) {
-      ctx.fillStyle = mod.status === 'active' ? 'rgba(6, 48, 84, 0.30)' : 'rgba(5, 42, 72, 0.22)';
+    if (mod.status === 'standby') {
+      ctx.fillStyle = '#05070b';
+      drawRoundedRect(ctx, x, y, w, h, mod.isDaughterModule ? 8 : 10);
+      ctx.fill();
+      ctx.strokeStyle = '#0c121e';
+      ctx.lineWidth = 1.5;
+      drawRoundedRect(ctx, x, y, w, h, mod.isDaughterModule ? 8 : 10);
+      ctx.stroke();
+      continue;
+    }
+
+    if (mod.zone !== 'center_grid') {
+      ctx.fillStyle = 'rgba(6, 48, 84, 0.30)';
       drawRoundedRect(ctx, x, y, w, h, 10);
       ctx.fill();
 
-      ctx.save();
-      if (mod.status === 'standby') {
-        ctx.setLineDash([10, 6]);
-        ctx.strokeStyle = 'rgba(226, 232, 240, 0.68)';
-        ctx.lineWidth = 2.5;
-      } else {
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 3.2;
-      }
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3.2;
       drawRoundedRect(ctx, x, y, w, h, 10);
       ctx.stroke();
-      ctx.restore();
 
       const title = PERIMETER_TITLES[mod.id] ?? mod.shortLabel;
       drawBorderIntegratedTitle(
@@ -218,74 +222,12 @@ export function createMainBoardTexture(): THREE.CanvasTexture {
         y,
         BOARD_DIMENSIONS.solderMaskHex,
         'bold 15px ui-sans-serif, system-ui, -apple-system, sans-serif',
-        mod.status === 'active' ? '#ffffff' : 'rgba(241, 245, 249, 0.90)',
+        '#ffffff',
         w - 24,
         18
       );
-
-      if (mod.id === 'SEVEN_SEG_ANODE' || mod.id === 'SEVEN_SEG_CATHODE') {
-        ctx.fillStyle = 'rgba(226, 232, 240, 0.85)';
-        ctx.font = 'bold 11px ui-sans-serif, system-ui, -apple-system, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('DIGIT 1', toPx(mod.position.x - 1.35), toPy(mod.position.z + 0.85));
-        ctx.fillText('DIGIT 2', toPx(mod.position.x + 1.35), toPy(mod.position.z + 0.85));
-      }
-
-      // Specialized silkscreen ticks for rotary dials / USB controls
-      if (mod.id === 'WAVEFORM_GEN') {
-        const dialCenters = [
-          { x: mod.position.x - 1.55, z: mod.position.z - 0.65, label: 'FREQ' },
-          { x: mod.position.x + 0.35, z: mod.position.z - 0.65, label: 'DUTY' },
-          { x: mod.position.x - 0.6, z: mod.position.z + 1.45, label: 'AMP' },
-        ];
-        for (const d of dialCenters) {
-          const cxPx = toPx(d.x);
-          const cyPx = toPy(d.z);
-          ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-          ctx.lineWidth = 2;
-          for (let i = 0; i <= 8; i++) {
-            const ang = (Math.PI * 0.75) + (i / 8) * (Math.PI * 1.5);
-            ctx.beginPath();
-            ctx.moveTo(cxPx + Math.cos(ang) * 24, cyPx + Math.sin(ang) * 24);
-            ctx.lineTo(cxPx + Math.cos(ang) * 31, cyPx + Math.sin(ang) * 31);
-            ctx.stroke();
-          }
-          ctx.fillStyle = '#e2e8f0';
-          ctx.font = 'bold 12px ui-sans-serif, system-ui, sans-serif';
-          ctx.fillText(d.label, cxPx, cyPx + 38);
-        }
-      } else if (mod.id === 'VOLTAGE_CONTROL') {
-        const knobs = [
-          { x: mod.position.x - 1.65, z: mod.position.z + 0.2, label: '0V — 5V A' },
-          { x: mod.position.x + 0.55, z: mod.position.z + 0.2, label: '0V — 5V B' },
-        ];
-        for (const k of knobs) {
-          const cxPx = toPx(k.x);
-          const cyPx = toPy(k.z);
-          ctx.strokeStyle = 'rgba(255,255,255,0.75)';
-          ctx.lineWidth = 2;
-          for (let i = 0; i <= 10; i++) {
-            const ang = Math.PI * 0.75 + (i / 10) * Math.PI * 1.5;
-            ctx.beginPath();
-            ctx.moveTo(cxPx + Math.cos(ang) * 26, cyPx + Math.sin(ang) * 26);
-            ctx.lineTo(cxPx + Math.cos(ang) * 33, cyPx + Math.sin(ang) * 33);
-            ctx.stroke();
-          }
-          ctx.fillStyle = '#e2e8f0';
-          ctx.font = 'bold 11px ui-sans-serif, system-ui, sans-serif';
-          ctx.fillText(k.label, cxPx, cyPx + 42);
-        }
-      } else if (mod.id === 'USB_PORTS') {
-        ctx.fillStyle = '#e2e8f0';
-        ctx.font = 'bold 12px ui-sans-serif, system-ui, sans-serif';
-        ctx.fillText('USB SCOPE', toPx(mod.position.x - 1.45), toPy(mod.position.z + 0.9));
-        ctx.fillText('USB DAQ', toPx(mod.position.x + 1.15), toPy(mod.position.z + 0.9));
-        ctx.fillText('RESET', toPx(mod.position.x - 1.45), toPy(mod.position.z + 1.98));
-        ctx.fillText('PWR +5V', toPx(mod.position.x + 1.15), toPy(mod.position.z + 1.98));
-      }
-    } else {
-      // Base PCB slot outline & 4 corner solder pads underneath center daughter PCBs
+    } else if (mod.isDaughterModule) {
+      // Base PCB slot outline & 4 corner solder pads underneath active center daughter PCBs (e.g. XOR 7486)
       ctx.save();
       ctx.setLineDash([8, 6]);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
@@ -307,7 +249,7 @@ export function createMainBoardTexture(): THREE.CanvasTexture {
     }
   }
 
-  // Slide Switch labels (SW1..SW16) + header pin markers
+  // Slide Switch labels (SW1..SW16) + header pin markers (shifted outward for per-pin SMD LEDs)
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const sw of SLIDE_SWITCHES) {
@@ -327,7 +269,7 @@ export function createMainBoardTexture(): THREE.CanvasTexture {
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 11px ui-sans-serif, system-ui, sans-serif';
     ctx.textAlign = 'right';
-    ctx.fillText(String(sw.col + 1), toPx(hdrX - 0.44), toPy(hdrZ));
+    ctx.fillText(String(sw.col + 1), toPx(hdrX - 0.56), toPy(hdrZ));
     ctx.textAlign = 'center';
   }
 
@@ -341,7 +283,7 @@ export function createMainBoardTexture(): THREE.CanvasTexture {
     const hdrZ = 4.6 - 0.85 + (btn.index - 1) * 0.56;
     ctx.textAlign = 'right';
     ctx.font = 'bold 12px ui-sans-serif, system-ui, sans-serif';
-    ctx.fillText(String(btn.index), toPx(hdrX - 0.44), toPy(hdrZ));
+    ctx.fillText(String(btn.index), toPx(hdrX - 0.56), toPy(hdrZ));
     ctx.textAlign = 'center';
   }
 
@@ -357,7 +299,7 @@ export function createMainBoardTexture(): THREE.CanvasTexture {
     const hdrZ = bankCenterZ - 1.75 + (led.index - 1) * 0.5;
     ctx.textAlign = 'left';
     ctx.font = 'bold 11px ui-sans-serif, system-ui, sans-serif';
-    ctx.fillText(shortName, toPx(hdrX + 0.46), toPy(hdrZ));
+    ctx.fillText(shortName, toPx(hdrX + 0.58), toPy(hdrZ));
     ctx.textAlign = 'center';
   }
 
@@ -396,9 +338,9 @@ function drawIeeeGateSymbol(
   cy: number,
   toPx: (lx: number) => number,
   toPy: (lz: number) => number,
-  scaleX: (w: number) => number
+  scaleX: (w: number) => number,
+  halfH = 0.235
 ) {
-  const halfH = 0.235;
   const topY = toPy(cy - halfH);
   const botY = toPy(cy + halfH);
   const midY = toPy(cy);
@@ -492,13 +434,14 @@ function drawIeeeGateSymbol(
 
 export function createActiveGateModuleTexture(mod: BoardModuleSpec): THREE.CanvasTexture {
   const cw = 512;
-  const ch = 512;
+  const ch = mod.isDaughterModule ? 512 : 416;
   const [canvas, ctx] = makeCanvas(cw, ch);
-  const { width, depth } = BOARD_DIMENSIONS.daughterModule;
+  const { width, depth } = mod.size;
   const { toPx, toPy, scaleX, scaleY } = makeMapper(0, 0, width, depth, cw, ch);
+  const layout = getGateModuleLayout(mod);
 
   const gType = mod.type as ActiveGateModuleType;
-  const pcbBlue = '#0f79bd';
+  const pcbBlue = mod.isDaughterModule ? '#0f79bd' : BOARD_DIMENSIONS.solderMaskHex;
 
   // Background
   ctx.fillStyle = pcbBlue;
@@ -507,7 +450,7 @@ export function createActiveGateModuleTexture(mod: BoardModuleSpec): THREE.Canva
   // Outer white silkscreen border
   const borderTopY = toPy(-depth / 2 + 0.1);
   ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 4;
+  ctx.lineWidth = mod.isDaughterModule ? 4 : 3.6;
   drawRoundedRect(
     ctx,
     toPx(-width / 2 + 0.1),
@@ -518,13 +461,15 @@ export function createActiveGateModuleTexture(mod: BoardModuleSpec): THREE.Canva
   );
   ctx.stroke();
 
-  // Corner mounting hole copper/gold rings
-  for (const cx of [-width / 2 + 0.24, width / 2 - 0.24]) {
-    for (const cz of [-depth / 2 + 0.24, depth / 2 - 0.24]) {
-      ctx.fillStyle = '#eab308';
-      ctx.beginPath();
-      ctx.arc(toPx(cx), toPy(cz), 10, 0, Math.PI * 2);
-      ctx.fill();
+  // Corner mounting hole copper/gold rings ONLY on removable daughter cards (e.g. XOR 7486)
+  if (mod.isDaughterModule) {
+    for (const cx of [-width / 2 + 0.24, width / 2 - 0.24]) {
+      for (const cz of [-depth / 2 + 0.24, depth / 2 - 0.24]) {
+        ctx.fillStyle = '#eab308';
+        ctx.beginPath();
+        ctx.arc(toPx(cx), toPy(cz), 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
   }
 
@@ -535,26 +480,24 @@ export function createActiveGateModuleTexture(mod: BoardModuleSpec): THREE.Canva
     toPx(0),
     borderTopY,
     pcbBlue,
-    'bold 24px ui-sans-serif, system-ui, sans-serif',
+    mod.isDaughterModule
+      ? 'bold 24px ui-sans-serif, system-ui, sans-serif'
+      : 'bold 21px ui-sans-serif, system-ui, sans-serif',
     '#ffffff',
     cw - 140,
-    28
+    26
   );
 
   // Top-center DIP-14 IC silkscreen outline (immediately below module title)
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.78)';
   ctx.lineWidth = 2.5;
-  ctx.strokeRect(toPx(-0.85), toPy(-1.84), scaleX(1.7), scaleY(0.56));
+  ctx.strokeRect(toPx(-0.85), toPy(layout.icLocalZ - 0.27), scaleX(1.7), scaleY(0.54));
   ctx.beginPath();
-  ctx.arc(toPx(-0.85), toPy(-1.56), scaleX(0.09), -Math.PI / 2, Math.PI / 2);
+  ctx.arc(toPx(-0.85), toPy(layout.icLocalZ), scaleX(0.09), -Math.PI / 2, Math.PI / 2);
   ctx.stroke();
 
-  // Lower-70% pin layout constants matching boardSchema.ts
-  const isNot = gType === 'IC_7404';
-  const leftStepZ = isNot ? 0.72 : 0.36;
-  const leftStartZ = isNot ? -0.58 : -0.76;
-  const rightStartZ = -0.58;
-  const rightStepZ = 0.72;
+  // Pin layout constants matching boardSchema.ts (fixed Col 0 vs daughter cards)
+  const { leftStepZ, leftStartZ, rightStartZ, rightStepZ, pinLabelOffsetZ, gateHalfH } = layout;
 
   // Determine trace X termination to cleanly touch each gate body
   let inputTraceEndX = -0.54;
@@ -594,15 +537,15 @@ export function createActiveGateModuleTexture(mod: BoardModuleSpec): THREE.Canva
       ctx.lineTo(toPx(inputTraceEndX), toPy(pinZ));
       ctx.stroke();
 
-      // Pin number with solid PCB blue halo so trace never obscures digits
-      ctx.font = 'bold 18px ui-sans-serif, system-ui, sans-serif';
+      // Pin number cleanly positioned slightly above trace so per-pin SMD LEDs & lit traces stay unobstructed
+      ctx.font = 'bold 15px ui-sans-serif, system-ui, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.strokeStyle = pcbBlue;
-      ctx.lineWidth = 6;
-      ctx.strokeText(String(pinNum), toPx(-1.34), toPy(pinZ));
+      ctx.lineWidth = 5;
+      ctx.strokeText(String(pinNum), toPx(-1.18), toPy(pinZ + pinLabelOffsetZ));
       ctx.fillStyle = '#ffffff';
-      ctx.fillText(String(pinNum), toPx(-1.34), toPy(pinZ));
+      ctx.fillText(String(pinNum), toPx(-1.18), toPy(pinZ + pinLabelOffsetZ));
     }
 
     // Output trace & pin number
@@ -613,17 +556,17 @@ export function createActiveGateModuleTexture(mod: BoardModuleSpec): THREE.Canva
     ctx.lineTo(toPx(1.75), toPy(cy));
     ctx.stroke();
 
-    ctx.font = 'bold 18px ui-sans-serif, system-ui, sans-serif';
+    ctx.font = 'bold 15px ui-sans-serif, system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.strokeStyle = pcbBlue;
-    ctx.lineWidth = 6;
-    ctx.strokeText(String(gate.outputPin), toPx(1.34), toPy(cy));
+    ctx.lineWidth = 5;
+    ctx.strokeText(String(gate.outputPin), toPx(1.18), toPy(cy + pinLabelOffsetZ));
     ctx.fillStyle = '#ffffff';
-    ctx.fillText(String(gate.outputPin), toPx(1.34), toPy(cy));
+    ctx.fillText(String(gate.outputPin), toPx(1.18), toPy(cy + pinLabelOffsetZ));
 
     // IEEE gate symbol
-    drawIeeeGateSymbol(ctx, gType, cy, toPx, toPy, scaleX);
+    drawIeeeGateSymbol(ctx, gType, cy, toPx, toPy, scaleX, gateHalfH);
   }
 
   return finalizeTexture(canvas);

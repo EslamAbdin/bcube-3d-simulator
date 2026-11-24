@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { HelpModal } from './components/HelpModal';
+import { IcInspectorModal } from './components/IcInspectorModal';
 import { LabDrawer } from './components/LabDrawer';
 import { StatusBar } from './components/StatusBar';
+import { TeachingPanel } from './components/TeachingPanel';
 import { TopHud } from './components/TopHud';
 import { CameraRig } from './scene/CameraRig';
 import { LabEnvironment } from './scene/LabEnvironment';
@@ -11,7 +13,6 @@ import { BoardChassis } from './scene/parts/BoardChassis';
 import { JumperWires } from './scene/parts/JumperWires';
 import { LogicModulesGrid } from './scene/parts/LogicModulesGrid';
 import { SocketHitboxes } from './scene/parts/SocketHitboxes';
-import { StandbyIOModules } from './scene/parts/StandbyIOModules';
 import { ActiveSocketHeaders } from './scene/parts/WhitePinHeader';
 import { useSimulatorStore } from './store/useSimulatorStore';
 
@@ -42,7 +43,7 @@ export function App() {
       <div className="h-full w-full touch-none" onContextMenu={(e) => e.preventDefault()}>
         <Canvas
           frameloop="demand"
-          shadows={isHighPerf}
+          shadows={false}
           dpr={isHighPerf ? [1, 1.5] : 1}
           gl={{
             antialias: true,
@@ -68,7 +69,6 @@ export function App() {
           <BoardChassis />
           <ActiveSocketHeaders />
           <ActiveIOModules />
-          <StandbyIOModules />
           <LogicModulesGrid />
           <SocketHitboxes />
           <JumperWires />
@@ -85,9 +85,11 @@ export function App() {
       )}
 
       <TopHud />
+      <TeachingPanel />
       <LabDrawer />
       <StatusBar />
       <HelpModal />
+      <IcInspectorModal />
     </div>
   );
 }

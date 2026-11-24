@@ -1,7 +1,6 @@
 import { memo, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { ALL_SOCKETS, BOARD_DIMENSIONS } from '../../schema/boardSchema';
-import { useSimulatorStore } from '../../store/useSimulatorStore';
 
 interface HeaderHousing {
   key: string;
@@ -121,7 +120,6 @@ const SHARED_STANDBY_STRIP_MAT = new THREE.MeshStandardMaterial({
  * using instanced housings, rims, socket cavities, and metallic contact pins.
  */
 export const ActiveSocketHeaders = memo(function ActiveSocketHeaders() {
-  const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
   const housings = useMemo(() => buildHeaderHousings(), []);
 
   const housingMeshRef = useRef<THREE.InstancedMesh>(null);
@@ -178,14 +176,11 @@ export const ActiveSocketHeaders = memo(function ActiveSocketHeaders() {
       <instancedMesh
         ref={housingMeshRef}
         args={[SHARED_UNIT_BOX_GEO, SHARED_PLASTIC_MAT, housings.length]}
-        castShadow={isHighPerf}
-        receiveShadow={isHighPerf}
         frustumCulled={false}
       />
       <instancedMesh
         ref={rimMeshRef}
         args={[SHARED_UNIT_BOX_GEO, SHARED_RIM_MAT, housings.length]}
-        receiveShadow={isHighPerf}
         frustumCulled={false}
       />
       <instancedMesh
@@ -224,7 +219,6 @@ export const StandbyHeaderBank = memo(function StandbyHeaderBank({
 }: {
   strips: StandbyHeaderStripSpec[];
 }) {
-  const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
   const stripMeshRef = useRef<THREE.InstancedMesh>(null);
   const cavityMeshRef = useRef<THREE.InstancedMesh>(null);
 
@@ -284,8 +278,6 @@ export const StandbyHeaderBank = memo(function StandbyHeaderBank({
         <instancedMesh
           ref={stripMeshRef}
           args={[SHARED_UNIT_BOX_GEO, SHARED_STANDBY_STRIP_MAT, strips.length]}
-          castShadow={isHighPerf}
-          receiveShadow={isHighPerf}
           frustumCulled={false}
         />
       )}

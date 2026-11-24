@@ -58,16 +58,18 @@ function buildJumperCurve(from: Vec3, to: Vec3, wireId: string): THREE.CatmullRo
 const SeatedWire = memo(function SeatedWire({
   wire,
   isSelected,
-  castShadow,
+  isHighPerf,
 }: {
   wire: WireSpec;
   isSelected: boolean;
-  castShadow: boolean;
+  isHighPerf: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const tubeMatRef = useRef<THREE.MeshStandardMaterial>(null);
 
   const signalFlowEnabled = useSimulatorStore((s) => s.signalFlowEnabled);
+  const teachingMode = useSimulatorStore((s) => s.teachingMode);
+  const showElectricity = signalFlowEnabled || teachingMode;
   const wireSignal = useSimulatorStore((s) => s.socketStates[wire.fromSocketId] ?? 'FLOATING');
   const invalidate = useThree((s) => s.invalidate);
 
@@ -75,7 +77,7 @@ const SeatedWire = memo(function SeatedWire({
   const toSock = SOCKET_MAP[wire.toSocketId];
 
   const showXrayHalo =
-    signalFlowEnabled && (wireSignal === 'HIGH' || wireSignal === 'CONFLICT');
+    showElectricity && (wireSignal === 'HIGH' || wireSignal === 'CONFLICT');
   const needHalo = isSelected || showXrayHalo;
 
   // Strictly memoize curve + primary TubeGeometry ONLY on endpoint geometry, wire ID & LOD quality
@@ -87,17 +89,17 @@ const SeatedWire = memo(function SeatedWire({
   const tubeGeo = useMemo(
     () =>
       curve
-        ? new THREE.TubeGeometry(curve, castShadow ? 36 : 22, 0.056, castShadow ? 10 : 7, false)
+        ? new THREE.TubeGeometry(curve, isHighPerf ? 24 : 16, 0.056, isHighPerf ? 8 : 6, false)
         : null,
-    [curve, castShadow]
+    [curve, isHighPerf]
   );
 
   const haloGeo = useMemo(
     () =>
       curve && needHalo
-        ? new THREE.TubeGeometry(curve, castShadow ? 32 : 18, 0.095, castShadow ? 10 : 6, false)
+        ? new THREE.TubeGeometry(curve, isHighPerf ? 20 : 14, 0.095, isHighPerf ? 6 : 5, false)
         : null,
-    [curve, needHalo, castShadow]
+    [curve, needHalo, isHighPerf]
   );
 
   useEffect(() => {
@@ -114,7 +116,7 @@ const SeatedWire = memo(function SeatedWire({
 
   useFrame(({ clock }) => {
     if (!tubeMatRef.current) return;
-    if (signalFlowEnabled && wireSignal === 'CONFLICT') {
+    if (showElectricity && wireSignal === 'CONFLICT') {
       tubeMatRef.current.emissiveIntensity = 1.45 + Math.sin(clock.elapsedTime * 12) * 0.75;
       invalidate();
     }
@@ -136,7 +138,7 @@ const SeatedWire = memo(function SeatedWire({
   let haloColor = '#38bdf8';
   let haloOpacity = 0.38;
 
-  if (signalFlowEnabled) {
+  if (showElectricity) {
     if (wireSignal === 'HIGH') {
       matColor = '#4ade80';
       matEmissive = '#22c55e';
@@ -144,11 +146,11 @@ const SeatedWire = memo(function SeatedWire({
       haloColor = isSelected ? '#38bdf8' : '#4ade80';
       haloOpacity = isSelected ? 0.42 : 0.28;
     } else if (wireSignal === 'LOW') {
-      matColor = '#334155';
-      matEmissive = isSelected ? '#38bdf8' : '#000000';
-      matEmissiveIntensity = isSelected ? 0.45 : 0;
+      matColor = teachingMode ? '#991b1b' : '#334155';
+      matEmissive = isSelected ? '#38bdf8' : teachingMode ? '#7f1d1d' : '#000000';
+      matEmissiveIntensity = isSelected ? 0.45 : teachingMode ? 0.35 : 0;
       matTransparent = true;
-      matOpacity = 0.58;
+      matOpacity = teachingMode ? 0.78 : 0.58;
     } else if (wireSignal === 'CONFLICT') {
       matColor = '#ef4444';
       matEmissive = '#f59e0b';
@@ -206,7 +208,6 @@ const SeatedWire = memo(function SeatedWire({
       {/* Insulated flexible wire arch */}
       <mesh
         geometry={tubeGeo}
-        castShadow={castShadow}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
         onClick={handleClick}
@@ -219,7 +220,7 @@ const SeatedWire = memo(function SeatedWire({
           emissiveIntensity={matEmissiveIntensity}
           transparent={matTransparent}
           opacity={matOpacity}
-          roughness={signalFlowEnabled && wireSignal === 'HIGH' ? 0.25 : 0.36}
+          roughness={showElectricity && wireSignal === 'HIGH' ? 0.25 : 0.36}
           metalness={0.08}
         />
       </mesh>
@@ -243,7 +244,6 @@ const SeatedWire = memo(function SeatedWire({
             position={[0, 0.19, 0]}
             geometry={SHARED_BOOT_GEO}
             material={SHARED_BOOT_MAT}
-            castShadow={castShadow}
           />
           <mesh position={[0, 0.41, 0]} geometry={SHARED_COLLAR_GEO}>
             <meshStandardMaterial color={wire.color} roughness={0.4} metalness={0.1} />
@@ -256,10 +256,10 @@ const SeatedWire = memo(function SeatedWire({
 
 const GhostPreviewWire = memo(function GhostPreviewWire({
   pendingSocketId,
-  castShadow,
+  isHighPerf,
 }: {
   pendingSocketId: string;
-  castShadow: boolean;
+  isHighPerf: boolean;
 }) {
   const originSock = SOCKET_MAP[pendingSocketId];
   const activeWireColor = useSimulatorStore((s) => s.activeWireColor);
@@ -315,7 +315,7 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
 
     lastBuiltTargetRef.current.set(tx, ty, tz);
     const curve = buildJumperCurve(originSock.position, { x: tx, y: ty, z: tz }, 'ghost-wire');
-    const nextGeo = new THREE.TubeGeometry(curve, castShadow ? 32 : 20, 0.052, 7, false);
+    const nextGeo = new THREE.TubeGeometry(curve, isHighPerf ? 24 : 16, 0.052, 7, false);
     const prevGeo = currentGeoRef.current;
     tubeMeshRef.current.geometry = nextGeo;
     currentGeoRef.current = nextGeo;
@@ -332,7 +332,6 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
         position={[originSock.position.x, originSock.position.y + 0.19, originSock.position.z]}
         geometry={SHARED_BOOT_GEO}
         material={SHARED_BOOT_MAT}
-        castShadow={castShadow}
       />
 
       {/* Snapped target preview boot */}
@@ -448,12 +447,12 @@ export const JumperWires = memo(function JumperWires() {
           key={wire.id}
           wire={wire}
           isSelected={wire.id === selectedWireId}
-          castShadow={isHighPerf}
+          isHighPerf={isHighPerf}
         />
       ))}
 
       {pendingSocketId && (
-        <GhostPreviewWire pendingSocketId={pendingSocketId} castShadow={isHighPerf} />
+        <GhostPreviewWire pendingSocketId={pendingSocketId} isHighPerf={isHighPerf} />
       )}
     </group>
   );

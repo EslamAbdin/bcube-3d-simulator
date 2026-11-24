@@ -2,9 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
-  ALL_MODULES,
   ALL_SOCKETS,
-  BOARD_DIMENSIONS,
   SOCKET_MAP,
   type SocketSpec,
 } from '../../schema/boardSchema';
@@ -210,79 +208,13 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
   );
 });
 
-const StandbyHoverZones = memo(function StandbyHoverZones() {
-  const standbyModules = useMemo(
-    () => ALL_MODULES.filter((m) => m.status === 'standby'),
-    []
-  );
-  const hoveredStandbyModuleId = useSimulatorStore((s) => s.hoveredStandbyModuleId);
-  const hoveredMod = useMemo(
-    () => standbyModules.find((m) => m.id === hoveredStandbyModuleId) ?? null,
-    [standbyModules, hoveredStandbyModuleId]
-  );
-
-  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
-    const px = e.point.x;
-    const pz = e.point.z;
-    const found = standbyModules.find(
-      (m) => px >= m.bounds.minX && px <= m.bounds.maxX && pz >= m.bounds.minZ && pz <= m.bounds.maxZ
-    );
-    const state = useSimulatorStore.getState();
-    if (found && !state.hoveredSocketId) {
-      if (state.hoveredStandbyModuleId !== found.id) {
-        state.setHoveredStandbyModuleId(found.id);
-      }
-    } else if (state.hoveredStandbyModuleId !== null) {
-      state.setHoveredStandbyModuleId(null);
-    }
-  };
-
-  const handlePointerOut = () => {
-    const state = useSimulatorStore.getState();
-    if (state.hoveredStandbyModuleId !== null) {
-      state.setHoveredStandbyModuleId(null);
-    }
-  };
-
-  return (
-    <group name="standby-hover-zones">
-      {/* Single consolidated pointer-detection plane instead of 33 invisible box meshes (-32 draw calls) */}
-      <mesh
-        position={[0, 0.012, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        onPointerMove={handlePointerMove}
-        onPointerOut={handlePointerOut}
-      >
-        <planeGeometry args={[BOARD_DIMENSIONS.width, BOARD_DIMENSIONS.depth]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-      </mesh>
-
-      {hoveredMod && (
-        <mesh
-          position={[
-            hoveredMod.position.x,
-            hoveredMod.isDaughterModule ? BOARD_DIMENSIONS.daughterModule.silkscreenY + 0.004 : 0.009,
-            hoveredMod.position.z,
-          ]}
-          rotation={[-Math.PI / 2, 0, 0]}
-        >
-          <planeGeometry args={[hoveredMod.size.width - 0.12, hoveredMod.size.depth - 0.12]} />
-          <meshBasicMaterial color="#cbd5e1" transparent opacity={0.14} depthWrite={false} />
-        </mesh>
-      )}
-    </group>
-  );
-});
-
 /**
- * Combines invisible active-socket raycast hitboxes (hover + click-to-wire)
- * and standby module hover zones for bottom-HUD inspection.
+ * Invisible active-socket raycast hitboxes (hover + click-to-wire).
  */
 export const SocketHitboxes = memo(function SocketHitboxes() {
   return (
     <group name="socket-and-standby-hitboxes">
       <ActiveSocketHitboxes />
-      <StandbyHoverZones />
     </group>
   );
 });

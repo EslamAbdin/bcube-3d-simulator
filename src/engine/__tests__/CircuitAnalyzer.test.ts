@@ -4,6 +4,7 @@ import { PRESET_CIRCUITS } from '../../data/presetCircuits';
 import type { WireSpec } from '../LogicEngine';
 import {
   formatTruthTableMarkdown,
+  generateTimingDiagram,
   generateTruthTable,
   gradeChallenge,
 } from '../circuitAnalyzer';
@@ -118,5 +119,51 @@ describe('Milestone 5: CircuitAnalyzer (Truth Table & Auto-Grader)', () => {
     const conflictRes = gradeChallenge(chAnd, conflictWires);
     expect(conflictRes.passed).toBe(false);
     expect(conflictRes.hasConflict).toBe(true);
+  });
+
+  it('generates multi-channel pin timing waveforms across inputs, gate I/O pins, and output LEDs', () => {
+    // 1) Single-input 7404 NOT: 4 alternating clock slots [0,1,0,1] across SW1, 7404 P1/P2, RED_D1
+    const notDiagram = generateTimingDiagram([
+      { id: 'N1', fromSocketId: 'SLIDE_SWITCH:SW1:A', toSocketId: 'IC_7404:PIN1:A', color: '#ef4444' },
+      { id: 'N2', fromSocketId: 'IC_7404:PIN2:A', toSocketId: 'LED_RED:RED_D1:A', color: '#22c55e' },
+    ]);
+    expect(notDiagram.steps.map((s) => s.inputValues.SW1)).toEqual([0, 1, 0, 1]);
+    expect(notDiagram.channels.map((c) => c.label)).toEqual(['SW1', '7404 P1', '7404 P2', 'RED D1']);
+    expect(notDiagram.channels[0].samples).toEqual(['LOW', 'HIGH', 'LOW', 'HIGH']);
+    expect(notDiagram.channels[2].samples).toEqual(['HIGH', 'LOW', 'HIGH', 'LOW']);
+    expect(notDiagram.channels[3].samples).toEqual(['HIGH', 'LOW', 'HIGH', 'LOW']);
+
+    // 2) Half Adder (XOR 7486 + AND 7408): all 10 connected pin waveforms across 4 states
+    const haPreset = PRESET_CIRCUITS.find((p) => p.id === 'half-adder')!;
+    const haDiagram = generateTimingDiagram(toWires(haPreset.wires, 'TH'));
+    expect(haDiagram.steps).toHaveLength(4);
+    expect(haDiagram.channels.map((c) => c.label)).toEqual([
+      'SW1',
+      'SW2',
+      '7408 P1',
+      '7408 P2',
+      '7408 P3',
+      '7486 P1',
+      '7486 P2',
+      '7486 P3',
+      'RED D1',
+      'BLUE D1',
+    ]);
+    const xorOut = haDiagram.channels.find((c) => c.label === '7486 P3')!;
+    const andOut = haDiagram.channels.find((c) => c.label === '7408 P3')!;
+    expect(xorOut.samples).toEqual(['LOW', 'HIGH', 'HIGH', 'LOW']);
+    expect(andOut.samples).toEqual(['LOW', 'LOW', 'LOW', 'HIGH']);
+
+    // 3) Cascaded XNOR (7486 -> 7404 -> RED_D1) includes all intermediate gate pins
+    const xnorPreset = PRESET_CIRCUITS.find((p) => p.id === 'xnor-gate')!;
+    const xnorDiagram = generateTimingDiagram(toWires(xnorPreset.wires, 'XN'));
+    expect(xnorDiagram.channels.map((c) => c.label)).toContain('7486 P3');
+    expect(xnorDiagram.channels.map((c) => c.label)).toContain('7404 P1');
+    expect(xnorDiagram.channels.find((c) => c.label === 'RED D1')?.samples).toEqual([
+      'HIGH',
+      'LOW',
+      'LOW',
+      'HIGH',
+    ]);
   });
 });

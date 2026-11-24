@@ -49,7 +49,8 @@ export type StandbyModuleType =
   | 'IC_74393'
   | 'NE555'
   | 'MV1'
-  | 'MV2';
+  | 'MV2'
+  | 'MV3';
 
 export type ModuleType = ActiveModuleType | StandbyModuleType;
 
@@ -230,6 +231,79 @@ function makeCenterModule(
   };
 }
 
+function makeFixedCol0Module(
+  row: number,
+  id: string,
+  type: ActiveGateModuleType,
+  label: string,
+  shortLabel: string,
+  gates: GateInstanceSpec[]
+): BoardModuleSpec {
+  const cx = -11.3;
+  const rowCentersZ = [-8.38, -4.14, 0.1, 4.34, 8.58];
+  const cz = rowCentersZ[row];
+  const width = 5.2;
+  const depth = 3.92;
+  return {
+    id,
+    type,
+    label,
+    shortLabel,
+    status: 'active',
+    zone: 'center_grid',
+    gridPos: { row, col: 0 },
+    position: { x: cx, y: BOARD_DIMENSIONS.topY, z: cz },
+    size: { width, depth, thickness: 0.01 },
+    bounds: makeBounds(cx, cz, width, depth),
+    isDaughterModule: false,
+    gates,
+  };
+}
+
+export interface GateModuleLayout {
+  surfaceY: number;
+  headerTopY: number;
+  icLocalZ: number;
+  icWidth: number;
+  leftStartZ: number;
+  leftStepZ: number;
+  rightStartZ: number;
+  rightStepZ: number;
+  gateHalfH: number;
+  pinLabelOffsetZ: number;
+}
+
+/** Shared layout metrics so sockets, silkscreen, 3D chips, and SMD overlays align 1:1. */
+export function getGateModuleLayout(mod: BoardModuleSpec): GateModuleLayout {
+  const isNot = mod.type === 'IC_7404';
+  if (mod.isDaughterModule) {
+    return {
+      surfaceY: BOARD_DIMENSIONS.daughterModule.silkscreenY,
+      headerTopY: BOARD_DIMENSIONS.daughterModule.headerTopY,
+      icLocalZ: -1.56,
+      icWidth: 0.44,
+      leftStartZ: isNot ? -0.58 : -0.76,
+      leftStepZ: isNot ? 0.72 : 0.36,
+      rightStartZ: -0.58,
+      rightStepZ: 0.72,
+      gateHalfH: 0.235,
+      pinLabelOffsetZ: -0.15,
+    };
+  }
+  return {
+    surfaceY: 0.008,
+    headerTopY: BOARD_DIMENSIONS.baseBoardHeaderTopY,
+    icLocalZ: -1.32,
+    icWidth: 0.42,
+    leftStartZ: isNot ? -0.465 : -0.62,
+    leftStepZ: isNot ? 0.62 : 0.31,
+    rightStartZ: -0.465,
+    rightStepZ: 0.62,
+    gateHalfH: 0.205,
+    pinLabelOffsetZ: -0.13,
+  };
+}
+
 // =========================================================================
 // PERIMETER I/O & UTILITY MODULES
 // =========================================================================
@@ -287,33 +361,36 @@ const NOT_7404_GATES: GateInstanceSpec[] = [
 ];
 
 const CENTER_MODULES: BoardModuleSpec[] = [
-  // Row 0
-  makeCenterModule(0, 0, 'IC_7400', 'IC_7400', '7400 Quad 2-Input NAND', '7400 NAND', 'active', STANDARD_2IN_GATES),
+  // Column 0 — 5 Fixed Built-In Logic Gate Blocks on Main PCB (top-to-bottom: NAND, AND, OR, NOR, NOT)
+  makeFixedCol0Module(0, 'IC_7400', 'IC_7400', '7400 Quad 2-Input NAND', '7400 NAND', STANDARD_2IN_GATES),
+  makeFixedCol0Module(1, 'IC_7408', 'IC_7408', '7408 Quad 2-Input AND', '7408 AND', STANDARD_2IN_GATES),
+  makeFixedCol0Module(2, 'IC_7432', 'IC_7432', '7432 Quad 2-Input OR', '7432 OR', STANDARD_2IN_GATES),
+  makeFixedCol0Module(3, 'IC_7402', 'IC_7402', '7402 Quad 2-Input NOR', '7402 NOR', NOR_7402_GATES),
+  makeFixedCol0Module(4, 'IC_7404', 'IC_7404', '7404 Hex Inverter (4 Gates)', '7404 NOT', NOT_7404_GATES),
+
+  // Column 1 — 4 Daughter Slots vertically (XOR 7486 in 3rd/second-to-last slot)
   makeCenterModule(0, 1, 'IC_7410', 'IC_7410', '7410 Triple 3-Input NAND', '7410 3-NAND', 'standby'),
-  makeCenterModule(0, 2, 'IC_7483', 'IC_7483', '7483 4-Bit Binary Full Adder', '7483 ADDER', 'standby'),
-  makeCenterModule(0, 3, 'IC_7447', 'IC_7447', '7447 BCD to 7-Seg (CA)', '7447 CA DEC', 'standby'),
-  makeCenterModule(0, 4, 'IC_7442', 'IC_7442', '7442 BCD to Decimal Decoder', '7442 DECODER', 'standby'),
-
-  // Row 1
-  makeCenterModule(1, 0, 'IC_7408', 'IC_7408', '7408 Quad 2-Input AND', '7408 AND', 'active', STANDARD_2IN_GATES),
   makeCenterModule(1, 1, 'IC_7420', 'IC_7420', '7420 Dual 4-Input NAND', '7420 4-NAND', 'standby'),
-  makeCenterModule(1, 2, 'IC_7473', 'IC_7473', '7473 Dual J-K Flip-Flop', '7473 JK-FF', 'standby'),
-  makeCenterModule(1, 3, 'IC_7485', 'IC_7485', '7485 4-Bit Magnitude Comparator', '7485 COMP', 'standby'),
-  makeCenterModule(1, 4, 'IC_7448', 'IC_7448', '7448 BCD to 7-Seg (CC)', '7448 CC DEC', 'standby'),
-
-  // Row 2
-  makeCenterModule(2, 0, 'IC_7432', 'IC_7432', '7432 Quad 2-Input OR', '7432 OR', 'active', STANDARD_2IN_GATES),
   makeCenterModule(2, 1, 'IC_7486', 'IC_7486', '7486 Quad 2-Input XOR', '7486 XOR', 'active', STANDARD_2IN_GATES),
-  makeCenterModule(2, 2, 'NE555', 'NE555', 'NE555 Precision Timer', 'NE555 TIMER', 'standby'),
-  makeCenterModule(2, 3, 'IC_74393', 'IC_74393', '74393 Dual 4-Bit Binary Counter', '74393 CNT', 'standby'),
-  makeCenterModule(2, 4, 'IC_7475', 'IC_7475', '7475 4-Bit Bistable Latch', '7475 LATCH', 'standby'),
+  makeCenterModule(3, 1, 'MV1', 'MV1', 'Multi Vibrator 1 (Monostable)', 'MV 1', 'standby'),
 
-  // Row 3
-  makeCenterModule(3, 0, 'IC_7402', 'IC_7402', '7402 Quad 2-Input NOR', '7402 NOR', 'active', NOR_7402_GATES),
-  makeCenterModule(3, 1, 'IC_7404', 'IC_7404', '7404 Hex Inverter (4 Gates)', '7404 NOT', 'active', NOT_7404_GATES),
-  makeCenterModule(3, 2, 'MV1', 'MV1', 'Multi Vibrator 1 (Monostable)', 'MV 1', 'standby'),
-  makeCenterModule(3, 3, 'MV2', 'MV2', 'Multi Vibrator 2 (Astable)', 'MV 2', 'standby'),
-  makeCenterModule(3, 4, 'IC_7490', 'IC_7490', '7490 Decade & Binary Counter', '7490 DECADE', 'standby'),
+  // Column 2 — 4 Daughter Slots (all standby)
+  makeCenterModule(0, 2, 'IC_7490', 'IC_7490', '7490 Decade & Binary Counter', '7490 DECADE', 'standby'),
+  makeCenterModule(1, 2, 'IC_7473', 'IC_7473', '7473 Dual J-K Flip-Flop', '7473 JK-FF', 'standby'),
+  makeCenterModule(2, 2, 'NE555', 'NE555', 'NE555 Precision Timer', 'NE555 TIMER', 'standby'),
+  makeCenterModule(3, 2, 'MV2', 'MV2', 'Multi Vibrator 2 (Astable)', 'MV 2', 'standby'),
+
+  // Column 3 — 4 Daughter Slots (all standby)
+  makeCenterModule(0, 3, 'IC_7442', 'IC_7442', '7442 BCD to Decimal Decoder', '7442 DECODER', 'standby'),
+  makeCenterModule(1, 3, 'IC_7485', 'IC_7485', '7485 4-Bit Magnitude Comparator', '7485 COMP', 'standby'),
+  makeCenterModule(2, 3, 'IC_74393', 'IC_74393', '74393 Dual 4-Bit Binary Counter', '74393 CNT', 'standby'),
+  makeCenterModule(3, 3, 'MV3', 'MV3', 'Multi Vibrator 3', 'MV 3', 'standby'),
+
+  // Column 4 — 4 Daughter Slots (all standby)
+  makeCenterModule(0, 4, 'IC_7447', 'IC_7447', '7447 BCD to 7-Seg (CA)', '7447 CA DEC', 'standby'),
+  makeCenterModule(1, 4, 'IC_7475', 'IC_7475', '7475 4-Bit Bistable Latch', '7475 LATCH', 'standby'),
+  makeCenterModule(2, 4, 'IC_7448', 'IC_7448', '7448 BCD to 7-Seg (CC)', '7448 CC DEC', 'standby'),
+  makeCenterModule(3, 4, 'IC_7483', 'IC_7483', '7483 4-Bit Binary Full Adder', '7483 ADDER', 'standby'),
 ];
 
 export const ALL_MODULES: BoardModuleSpec[] = [...PERIMETER_MODULES, ...CENTER_MODULES];
@@ -489,21 +566,18 @@ for (const mod of CENTER_MODULES) {
   if (mod.status !== 'active' || !mod.gates) continue;
   const gType = mod.type as ActiveGateModuleType;
   const modLabel = GATE_NAME_SHORT[gType];
-  const headerY = BOARD_DIMENSIONS.daughterModule.headerTopY;
+  const layout = getGateModuleLayout(mod);
+  const headerY = layout.headerTopY;
   const leftX = mod.position.x - 2.02;
   const rightX = mod.position.x + 2.02;
 
-  const isNot = gType === 'IC_7404';
-  const leftStepZ = isNot ? 0.72 : 0.36;
-  const leftStartZ = mod.position.z - (isNot ? 0.58 : 0.76);
-  const rightStartZ = mod.position.z - 0.58;
-  const rightStepZ = 0.72;
+  const { leftStepZ, leftStartZ, rightStartZ, rightStepZ } = layout;
 
   let leftCursor = 0;
   for (const gate of mod.gates) {
     gate.inputPins.forEach((pinNum, inIdx) => {
       const inRole = gate.inputPins.length === 1 ? `Gate ${gate.gateIndex} In` : `Gate ${gate.gateIndex} In ${inIdx === 0 ? 'A' : 'B'}`;
-      const z = leftStartZ + leftCursor * leftStepZ;
+      const z = mod.position.z + leftStartZ + leftCursor * leftStepZ;
       leftCursor++;
       pushDualSockets(
         mod.id,
@@ -518,7 +592,7 @@ for (const mod of CENTER_MODULES) {
       );
     });
 
-    const outZ = rightStartZ + (gate.gateIndex - 1) * rightStepZ;
+    const outZ = mod.position.z + rightStartZ + (gate.gateIndex - 1) * rightStepZ;
     pushDualSockets(
       mod.id,
       gType,
