@@ -8,66 +8,56 @@ import { StandbyHeaderBank, type StandbyHeaderStripSpec } from './WhitePinHeader
 const SHARED_DIP_SLIDER_GEO = new THREE.BoxGeometry(0.09, 0.05, 0.14);
 const SHARED_DIP_SLIDER_MAT = new THREE.MeshStandardMaterial({ color: '#f8fafc', roughness: 0.35 });
 
-function RotaryKnob({ position, radius = 0.48 }: { position: [number, number, number]; radius?: number }) {
-  return (
-    <group position={position}>
-      {/* Base nut collar */}
-      <mesh position={[0, 0.04, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[radius * 0.92, radius * 0.96, 0.08, 20]} />
-        <meshStandardMaterial color="#94a3b8" roughness={0.3} metalness={0.82} />
-      </mesh>
-      {/* Matte-black ribbed knob body */}
-      <mesh position={[0, 0.22, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[radius * 0.78, radius * 0.84, 0.34, 24]} />
-        <meshStandardMaterial color="#181c24" roughness={0.55} metalness={0.18} />
-      </mesh>
-      {/* Top brushed aluminum inlay */}
-      <mesh position={[0, 0.392, 0]}>
-        <cylinderGeometry args={[radius * 0.62, radius * 0.62, 0.02, 20]} />
-        <meshStandardMaterial color="#cbd5e1" roughness={0.32} metalness={0.78} />
-      </mesh>
-      {/* White pointer index mark */}
-      <mesh position={[0, 0.405, -radius * 0.3]}>
-        <boxGeometry args={[0.06, 0.02, radius * 0.42]} />
-        <meshStandardMaterial color="#f8fafc" roughness={0.3} />
-      </mesh>
-    </group>
-  );
-}
+// Unit-radius shared RotaryKnob geometries & materials (group scales X/Z by radius)
+const SHARED_KNOB_BASE_GEO = new THREE.CylinderGeometry(0.92, 0.96, 0.08, 16);
+const SHARED_KNOB_BODY_GEO = new THREE.CylinderGeometry(0.78, 0.84, 0.34, 18);
+const SHARED_KNOB_INLAY_GEO = new THREE.CylinderGeometry(0.62, 0.62, 0.02, 16);
+const SHARED_KNOB_MARK_GEO = new THREE.BoxGeometry(0.06, 0.02, 0.42);
+const SHARED_KNOB_BASE_MAT = new THREE.MeshStandardMaterial({ color: '#94a3b8', roughness: 0.3, metalness: 0.82 });
+const SHARED_KNOB_BODY_MAT = new THREE.MeshStandardMaterial({ color: '#181c24', roughness: 0.55, metalness: 0.18 });
+const SHARED_KNOB_INLAY_MAT = new THREE.MeshStandardMaterial({ color: '#cbd5e1', roughness: 0.32, metalness: 0.78 });
+const SHARED_KNOB_MARK_MAT = new THREE.MeshStandardMaterial({ color: '#f8fafc', roughness: 0.3 });
 
-function ResistorRow({
-  x,
-  z,
-  count,
-  spacing,
-  bodyColor,
+// Instanced resistor & DAQ pin assets
+const SHARED_RES_LEAD_GEO = new THREE.CylinderGeometry(0.02, 0.02, 0.92, 6);
+const SHARED_RES_BODY_GEO = new THREE.CylinderGeometry(0.085, 0.085, 0.46, 10);
+const SHARED_RES_LEAD_MAT = new THREE.MeshStandardMaterial({ color: '#cbd5e1', roughness: 0.25, metalness: 0.88 });
+const SHARED_RES_TAN_MAT = new THREE.MeshStandardMaterial({ color: '#d6c39c', roughness: 0.45, metalness: 0.08 });
+const SHARED_RES_BLUE_MAT = new THREE.MeshStandardMaterial({ color: '#60a5fa', roughness: 0.45, metalness: 0.08 });
+const SHARED_DAQ_PIN_GEO = new THREE.BoxGeometry(0.05, 0.12, 0.05);
+const SHARED_DAQ_PIN_MAT = new THREE.MeshStandardMaterial({ color: '#eab308', roughness: 0.25, metalness: 0.9 });
+
+function RotaryKnob({
+  position,
+  radius = 0.48,
+  castShadow = true,
 }: {
-  x: number;
-  z: number;
-  count: number;
-  spacing: number;
-  bodyColor: string;
+  position: [number, number, number];
+  radius?: number;
+  castShadow?: boolean;
 }) {
-  const startX = x - ((count - 1) * spacing) / 2;
   return (
-    <group>
-      {Array.from({ length: count }).map((_, i) => {
-        const rx = startX + i * spacing;
-        return (
-          <group key={i} position={[rx, 0.08, z]}>
-            {/* Silver axial wire leads */}
-            <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-              <cylinderGeometry args={[0.02, 0.02, 0.92, 8]} />
-              <meshStandardMaterial color="#cbd5e1" roughness={0.25} metalness={0.88} />
-            </mesh>
-            {/* Ceramic resistor body */}
-            <mesh rotation={[Math.PI / 2, 0, 0]} castShadow>
-              <cylinderGeometry args={[0.085, 0.085, 0.46, 12]} />
-              <meshStandardMaterial color={bodyColor} roughness={0.45} metalness={0.08} />
-            </mesh>
-          </group>
-        );
-      })}
+    <group position={position} scale={[radius, 1, radius]}>
+      {/* Base nut collar */}
+      <mesh
+        position={[0, 0.04, 0]}
+        geometry={SHARED_KNOB_BASE_GEO}
+        material={SHARED_KNOB_BASE_MAT}
+        castShadow={castShadow}
+        receiveShadow={castShadow}
+      />
+      {/* Matte-black ribbed knob body */}
+      <mesh
+        position={[0, 0.22, 0]}
+        geometry={SHARED_KNOB_BODY_GEO}
+        material={SHARED_KNOB_BODY_MAT}
+        castShadow={castShadow}
+        receiveShadow={castShadow}
+      />
+      {/* Top brushed aluminum inlay */}
+      <mesh position={[0, 0.392, 0]} geometry={SHARED_KNOB_INLAY_GEO} material={SHARED_KNOB_INLAY_MAT} />
+      {/* White pointer index mark */}
+      <mesh position={[0, 0.405, -0.3]} geometry={SHARED_KNOB_MARK_GEO} material={SHARED_KNOB_MARK_MAT} />
     </group>
   );
 }
@@ -82,6 +72,10 @@ export const StandbyIOModules = memo(function StandbyIOModules() {
   const freqLitTex = useCanvasTexture(() => createSevenSegFaceTexture('000.0', true), []);
 
   const dipSliderRef = useRef<THREE.InstancedMesh>(null);
+  const resLeadRef = useRef<THREE.InstancedMesh>(null);
+  const resTanRef = useRef<THREE.InstancedMesh>(null);
+  const resBlueRef = useRef<THREE.InstancedMesh>(null);
+  const daqPinRef = useRef<THREE.InstancedMesh>(null);
 
   const dipMod = MODULE_MAP.DIP_SWITCH;
   const waveMod = MODULE_MAP.WAVEFORM_GEN;
@@ -115,6 +109,57 @@ export const StandbyIOModules = memo(function StandbyIOModules() {
     mesh.instanceMatrix.needsUpdate = true;
   }, [dipMod.position.x, dipMod.position.z]);
 
+  useLayoutEffect(() => {
+    const leads = resLeadRef.current;
+    const tans = resTanRef.current;
+    const blues = resBlueRef.current;
+    const daqPins = daqPinRef.current;
+    if (!leads || !tans || !blues || !daqPins) return;
+
+    const dummy = new THREE.Object3D();
+    let leadIdx = 0;
+    let tanIdx = 0;
+    let blueIdx = 0;
+
+    const addRow = (cx: number, cz: number, count: number, isTan: boolean) => {
+      const startX = cx - ((count - 1) * 0.46) / 2;
+      for (let i = 0; i < count; i++) {
+        dummy.position.set(startX + i * 0.46, 0.08, cz);
+        dummy.rotation.set(Math.PI / 2, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        leads.setMatrixAt(leadIdx++, dummy.matrix);
+        if (isTan) {
+          tans.setMatrixAt(tanIdx++, dummy.matrix);
+        } else {
+          blues.setMatrixAt(blueIdx++, dummy.matrix);
+        }
+      }
+    };
+
+    addRow(pullUpTop.position.x, pullUpTop.position.z - 0.05, 8, true);
+    addRow(pullUpBot.position.x, pullUpBot.position.z + 0.52, 6, true);
+    addRow(pullDownTop.position.x, pullDownTop.position.z - 0.05, 8, false);
+    addRow(pullDownBot.position.x, pullDownBot.position.z + 0.52, 6, false);
+
+    leads.instanceMatrix.needsUpdate = true;
+    tans.instanceMatrix.needsUpdate = true;
+    blues.instanceMatrix.needsUpdate = true;
+
+    let pinIdx = 0;
+    dummy.rotation.set(0, 0, 0);
+    for (const daq of [daqIn, daqOut]) {
+      for (let c = 0; c < 8; c++) {
+        for (const pz of [-0.14, 0.14]) {
+          dummy.position.set(daq.position.x - 0.9 + c * 0.26, 0.384, daq.position.z + 0.25 + pz);
+          dummy.updateMatrix();
+          daqPins.setMatrixAt(pinIdx++, dummy.matrix);
+        }
+      }
+    }
+    daqPins.instanceMatrix.needsUpdate = true;
+  }, [pullUpTop, pullUpBot, pullDownTop, pullDownBot, daqIn, daqOut]);
+
   const standbyStrips = useMemo<StandbyHeaderStripSpec[]>(
     () => [
       { key: 'dip-hdr', x: dipMod.position.x + 2.45, yBase: 0.005, yTop: 0.22, z: dipMod.position.z + 0.2, rows: 4, cols: 2, pitchZ: 0.44 },
@@ -141,7 +186,7 @@ export const StandbyIOModules = memo(function StandbyIOModules() {
       {/* 1. DIP SWITCH (2x red 8-way DIP blocks) */}
       <group position={[dipMod.position.x, 0.004, dipMod.position.z]}>
         {[-1.45, 0.55].map((ox, i) => (
-          <mesh key={i} position={[ox, 0.11, 0.2]} castShadow receiveShadow>
+          <mesh key={i} position={[ox, 0.11, 0.2]} castShadow={isHighPerf} receiveShadow={isHighPerf}>
             <boxGeometry args={[1.65, 0.22, 0.78]} />
             <meshStandardMaterial color="#dc2626" roughness={0.42} metalness={0.08} />
           </mesh>
@@ -151,43 +196,42 @@ export const StandbyIOModules = memo(function StandbyIOModules() {
 
       {/* 2. WAVEFORM GENERATOR (3 rotary knobs + silver mode toggle) */}
       <group position={[waveMod.position.x, 0.004, waveMod.position.z]}>
-        <RotaryKnob position={[-1.55, 0, -0.65]} radius={0.45} />
-        <RotaryKnob position={[0.35, 0, -0.65]} radius={0.45} />
-        <RotaryKnob position={[-0.6, 0, 1.45]} radius={0.45} />
+        <RotaryKnob position={[-1.55, 0, -0.65]} radius={0.45} castShadow={isHighPerf} />
+        <RotaryKnob position={[0.35, 0, -0.65]} radius={0.45} castShadow={isHighPerf} />
+        <RotaryKnob position={[-0.6, 0, 1.45]} radius={0.45} castShadow={isHighPerf} />
         {/* Silver toggle switch */}
-        <mesh position={[-2.15, 0.08, 1.45]} castShadow>
+        <mesh position={[-2.15, 0.08, 1.45]} castShadow={isHighPerf}>
           <boxGeometry args={[0.42, 0.16, 0.56]} />
           <meshStandardMaterial color="#1e293b" roughness={0.5} />
         </mesh>
-        <mesh position={[-2.15, 0.34, 1.45]} rotation={[0.25, 0, 0]} castShadow>
+        <mesh position={[-2.15, 0.34, 1.45]} rotation={[0.25, 0, 0]} castShadow={isHighPerf}>
           <cylinderGeometry args={[0.06, 0.08, 0.42, 12]} />
           <meshStandardMaterial color="#e2e8f0" roughness={0.2} metalness={0.9} />
         </mesh>
       </group>
 
-      {/* 3. TOP & BOTTOM PULL-UP / PULL-DOWN RESISTOR ARRAYS */}
-      <ResistorRow x={pullUpTop.position.x} z={pullUpTop.position.z - 0.05} count={8} spacing={0.46} bodyColor="#d6c39c" />
-      <ResistorRow x={pullDownTop.position.x} z={pullDownTop.position.z - 0.05} count={8} spacing={0.46} bodyColor="#60a5fa" />
-      <ResistorRow x={pullUpBot.position.x} z={pullUpBot.position.z + 0.52} count={6} spacing={0.46} bodyColor="#d6c39c" />
-      <ResistorRow x={pullDownBot.position.x} z={pullDownBot.position.z + 0.52} count={6} spacing={0.46} bodyColor="#60a5fa" />
+      {/* 3. TOP & BOTTOM PULL-UP / PULL-DOWN RESISTOR ARRAYS (instanced) */}
+      <instancedMesh ref={resLeadRef} args={[SHARED_RES_LEAD_GEO, SHARED_RES_LEAD_MAT, 28]} castShadow={isHighPerf} />
+      <instancedMesh ref={resTanRef} args={[SHARED_RES_BODY_GEO, SHARED_RES_TAN_MAT, 14]} castShadow={isHighPerf} />
+      <instancedMesh ref={resBlueRef} args={[SHARED_RES_BODY_GEO, SHARED_RES_BLUE_MAT, 14]} castShadow={isHighPerf} />
 
       {/* 4. VOLTAGE CONTROL */}
       <group position={[voltMod.position.x, 0.004, voltMod.position.z]}>
-        <RotaryKnob position={[-1.65, 0, 0.2]} radius={0.5} />
-        <RotaryKnob position={[0.55, 0, 0.2]} radius={0.5} />
+        <RotaryKnob position={[-1.65, 0, 0.2]} radius={0.5} castShadow={isHighPerf} />
+        <RotaryKnob position={[0.55, 0, 0.2]} radius={0.5} castShadow={isHighPerf} />
       </group>
 
       {/* 5. SPEAKER */}
       <group position={[spkMod.position.x, 0.004, spkMod.position.z]}>
-        <mesh position={[-0.95, 0.1, 0.25]} castShadow receiveShadow>
-          <cylinderGeometry args={[0.88, 0.92, 0.2, 28]} />
+        <mesh position={[-0.95, 0.1, 0.25]} castShadow={isHighPerf} receiveShadow={isHighPerf}>
+          <cylinderGeometry args={[0.88, 0.92, 0.2, 24]} />
           <meshStandardMaterial color="#181c24" roughness={0.62} metalness={0.25} />
         </mesh>
         <mesh position={[-0.95, 0.205, 0.25]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.28, 0.72, 28]} />
+          <ringGeometry args={[0.28, 0.72, 24]} />
           <meshStandardMaterial color="#0f172a" roughness={0.85} />
         </mesh>
-        <RotaryKnob position={[0.9, 0, 0.25]} radius={0.38} />
+        <RotaryKnob position={[0.9, 0, 0.25]} radius={0.38} castShadow={isHighPerf} />
       </group>
 
       {/* 6. 2x COMMON-ANODE & 2x COMMON-CATHODE 7-SEGMENT DISPLAYS */}
@@ -206,7 +250,7 @@ export const StandbyIOModules = memo(function StandbyIOModules() {
 
       {/* 7. 4-DIGIT FREQUENCY COUNTER */}
       <group position={[freqMod.position.x - 0.38, 0.004, freqMod.position.z + 0.25]}>
-        <mesh position={[0, 0.14, 0]} castShadow receiveShadow>
+        <mesh position={[0, 0.14, 0]} castShadow={isHighPerf} receiveShadow={isHighPerf}>
           <boxGeometry args={[3.9, 0.28, 1.45]} />
           <meshStandardMaterial color="#0f172a" roughness={0.38} metalness={0.15} />
         </mesh>
@@ -222,10 +266,10 @@ export const StandbyIOModules = memo(function StandbyIOModules() {
         </mesh>
       </group>
 
-      {/* 8. DAQ INPUT & DAQ OUTPUT SHROUDED BOX HEADERS */}
+      {/* 8. DAQ INPUT & DAQ OUTPUT SHROUDED BOX HEADERS (pins instanced) */}
       {[daqIn, daqOut].map((daq) => (
         <group key={daq.id} position={[daq.position.x, 0.004, daq.position.z + 0.25]}>
-          <mesh position={[0, 0.18, 0]} castShadow receiveShadow>
+          <mesh position={[0, 0.18, 0]} castShadow={isHighPerf} receiveShadow={isHighPerf}>
             <boxGeometry args={[2.55, 0.36, 0.92]} />
             <meshStandardMaterial color="#181c24" roughness={0.55} metalness={0.15} />
           </mesh>
@@ -233,33 +277,26 @@ export const StandbyIOModules = memo(function StandbyIOModules() {
             <boxGeometry args={[2.22, 0.02, 0.6]} />
             <meshStandardMaterial color="#090d14" roughness={0.85} />
           </mesh>
-          {Array.from({ length: 8 }).map((_, c) =>
-            [-0.14, 0.14].map((pz, r) => (
-              <mesh key={`${c}-${r}`} position={[-0.9 + c * 0.26, 0.38, pz]}>
-                <boxGeometry args={[0.05, 0.12, 0.05]} />
-                <meshStandardMaterial color="#eab308" roughness={0.25} metalness={0.9} />
-              </mesh>
-            ))
-          )}
         </group>
       ))}
+      <instancedMesh ref={daqPinRef} args={[SHARED_DAQ_PIN_GEO, SHARED_DAQ_PIN_MAT, 32]} />
 
       {/* 9. OSCILLOSCOPE BNC CONNECTOR */}
       <group position={[oscMod.position.x, 0.004, oscMod.position.z + 0.28]}>
-        <mesh position={[0, 0.08, 0]} castShadow>
+        <mesh position={[0, 0.08, 0]} castShadow={isHighPerf}>
           <cylinderGeometry args={[0.52, 0.52, 0.16, 6]} />
           <meshStandardMaterial color="#94a3b8" roughness={0.3} metalness={0.85} />
         </mesh>
-        <mesh position={[0, 0.36, 0]} castShadow>
-          <cylinderGeometry args={[0.38, 0.4, 0.46, 20]} />
+        <mesh position={[0, 0.36, 0]} castShadow={isHighPerf}>
+          <cylinderGeometry args={[0.38, 0.4, 0.46, 16]} />
           <meshStandardMaterial color="#cbd5e1" roughness={0.22} metalness={0.9} />
         </mesh>
         <mesh position={[0, 0.592, 0]}>
-          <cylinderGeometry args={[0.24, 0.24, 0.02, 16]} />
+          <cylinderGeometry args={[0.24, 0.24, 0.02, 14]} />
           <meshStandardMaterial color="#f8fafc" roughness={0.4} />
         </mesh>
         <mesh position={[0, 0.61, 0]}>
-          <cylinderGeometry args={[0.07, 0.07, 0.04, 12]} />
+          <cylinderGeometry args={[0.07, 0.07, 0.04, 10]} />
           <meshStandardMaterial color="#eab308" roughness={0.2} metalness={0.95} />
         </mesh>
       </group>
@@ -268,7 +305,7 @@ export const StandbyIOModules = memo(function StandbyIOModules() {
       <group position={[usbMod.position.x, 0.004, usbMod.position.z]}>
         {[-1.45, 1.15].map((ox, i) => (
           <group key={i} position={[ox, 0.34, -0.22]}>
-            <mesh castShadow receiveShadow>
+            <mesh castShadow={isHighPerf} receiveShadow={isHighPerf}>
               <boxGeometry args={[1.38, 0.68, 1.24]} />
               <meshStandardMaterial color="#cbd5e1" roughness={0.26} metalness={0.86} />
             </mesh>
@@ -280,12 +317,12 @@ export const StandbyIOModules = memo(function StandbyIOModules() {
         ))}
 
         {/* Small red Reset pushbutton */}
-        <mesh position={[-1.45, 0.08, 1.45]} castShadow>
+        <mesh position={[-1.45, 0.08, 1.45]} castShadow={isHighPerf}>
           <boxGeometry args={[0.56, 0.16, 0.56]} />
           <meshStandardMaterial color="#1e293b" roughness={0.5} />
         </mesh>
-        <mesh position={[-1.45, 0.2, 1.45]} castShadow>
-          <cylinderGeometry args={[0.18, 0.18, 0.14, 16]} />
+        <mesh position={[-1.45, 0.2, 1.45]} castShadow={isHighPerf}>
+          <cylinderGeometry args={[0.18, 0.18, 0.14, 14]} />
           <meshStandardMaterial color="#dc2626" roughness={0.35} />
         </mesh>
 

@@ -1,5 +1,5 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
-import { useFrame, type ThreeEvent } from '@react-three/fiber';
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   ALL_MODULES,
@@ -58,6 +58,7 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
   const hoveredSocketId = useSimulatorStore((s) => s.hoveredSocketId);
   const pendingSocketId = useSimulatorStore((s) => s.pendingSocketId);
   const pairedSocketMap = useMemo(() => buildPairedSocketMap(), []);
+  const invalidate = useThree((s) => s.invalidate);
 
   // Radius >= 0.145 ensures effortless clicking on both 3D and 2D views
   const colliderGeo = useMemo(() => new THREE.CylinderGeometry(0.145, 0.145, 0.08, 12), []);
@@ -91,14 +92,17 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
   }, []);
 
   useFrame(({ clock }) => {
+    if (!hoveredSocketId && !pendingSocketId) return;
     const t = clock.elapsedTime;
     if (primaryRingRef.current) {
       const s = 1.04 + Math.sin(t * 7) * 0.06;
       primaryRingRef.current.scale.set(s, s, 1);
+      invalidate();
     }
     if (originRingRef.current) {
       const s = 1.08 + Math.sin(t * 8.5) * 0.12;
       originRingRef.current.scale.set(s, s, 1);
+      invalidate();
     }
   });
 
@@ -125,7 +129,7 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     // Guard against completing/starting wires after camera drag/orbit
-    if (e.delta > 5) return;
+    if (e.delta > 8) return;
     e.stopPropagation();
 
     const picked = resolvePickedSocket(e, pairedSocketMap);
@@ -212,49 +216,60 @@ const StandbyHoverZones = memo(function StandbyHoverZones() {
     []
   );
   const hoveredStandbyModuleId = useSimulatorStore((s) => s.hoveredStandbyModuleId);
+  const hoveredMod = useMemo(
+    () => standbyModules.find((m) => m.id === hoveredStandbyModuleId) ?? null,
+    [standbyModules, hoveredStandbyModuleId]
+  );
+
+  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+    const px = e.point.x;
+    const pz = e.point.z;
+    const found = standbyModules.find(
+      (m) => px >= m.bounds.minX && px <= m.bounds.maxX && pz >= m.bounds.minZ && pz <= m.bounds.maxZ
+    );
+    const state = useSimulatorStore.getState();
+    if (found && !state.hoveredSocketId) {
+      if (state.hoveredStandbyModuleId !== found.id) {
+        state.setHoveredStandbyModuleId(found.id);
+      }
+    } else if (state.hoveredStandbyModuleId !== null) {
+      state.setHoveredStandbyModuleId(null);
+    }
+  };
+
+  const handlePointerOut = () => {
+    const state = useSimulatorStore.getState();
+    if (state.hoveredStandbyModuleId !== null) {
+      state.setHoveredStandbyModuleId(null);
+    }
+  };
 
   return (
     <group name="standby-hover-zones">
-      {standbyModules.map((mod) => {
-        const isHovered = hoveredStandbyModuleId === mod.id;
-        const boxHeight = mod.isDaughterModule ? 0.46 : 0.52;
-        const boxY = mod.isDaughterModule ? 0.25 : 0.26;
-        const overlayY = mod.isDaughterModule
-          ? BOARD_DIMENSIONS.daughterModule.silkscreenY + 0.004
-          : 0.009;
+      {/* Single consolidated pointer-detection plane instead of 33 invisible box meshes (-32 draw calls) */}
+      <mesh
+        position={[0, 0.012, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        onPointerMove={handlePointerMove}
+        onPointerOut={handlePointerOut}
+      >
+        <planeGeometry args={[BOARD_DIMENSIONS.width, BOARD_DIMENSIONS.depth]} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+      </mesh>
 
-        return (
-          <group key={mod.id}>
-            <mesh
-              position={[mod.position.x, boxY, mod.position.z]}
-              onPointerOver={(e) => {
-                e.stopPropagation();
-                const state = useSimulatorStore.getState();
-                if (!state.hoveredSocketId && state.hoveredStandbyModuleId !== mod.id) {
-                  state.setHoveredStandbyModuleId(mod.id);
-                }
-              }}
-              onPointerOut={(e) => {
-                e.stopPropagation();
-                const state = useSimulatorStore.getState();
-                if (state.hoveredStandbyModuleId === mod.id) {
-                  state.setHoveredStandbyModuleId(null);
-                }
-              }}
-            >
-              <boxGeometry args={[mod.size.width, boxHeight, mod.size.depth]} />
-              <meshBasicMaterial transparent opacity={0} depthWrite={false} />
-            </mesh>
-
-            {isHovered && (
-              <mesh position={[mod.position.x, overlayY, mod.position.z]} rotation={[-Math.PI / 2, 0, 0]}>
-                <planeGeometry args={[mod.size.width - 0.12, mod.size.depth - 0.12]} />
-                <meshBasicMaterial color="#cbd5e1" transparent opacity={0.14} depthWrite={false} />
-              </mesh>
-            )}
-          </group>
-        );
-      })}
+      {hoveredMod && (
+        <mesh
+          position={[
+            hoveredMod.position.x,
+            hoveredMod.isDaughterModule ? BOARD_DIMENSIONS.daughterModule.silkscreenY + 0.004 : 0.009,
+            hoveredMod.position.z,
+          ]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[hoveredMod.size.width - 0.12, hoveredMod.size.depth - 0.12]} />
+          <meshBasicMaterial color="#cbd5e1" transparent opacity={0.14} depthWrite={false} />
+        </mesh>
+      )}
     </group>
   );
 });

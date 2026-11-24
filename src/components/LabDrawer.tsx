@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 import { LAB_CHALLENGES } from '../data/labChallenges';
 import {
   formatTruthTableMarkdown,
@@ -65,7 +65,7 @@ const DIFFICULTY_BADGES = {
  * 1) Live Auto Truth Table Analyzer (row highlight + click-to-test + Markdown export)
  * 2) Guided Lab Challenges with Auto-Grading & localStorage progress
  */
-export function LabDrawer() {
+export const LabDrawer = memo(function LabDrawer() {
   const activeDrawerTab = useSimulatorStore((s) => s.activeDrawerTab);
   const setActiveDrawerTab = useSimulatorStore((s) => s.setActiveDrawerTab);
   const wires = useSimulatorStore((s) => s.wires);
@@ -146,7 +146,7 @@ export function LabDrawer() {
   return (
     <aside
       aria-label="Lab Workbench Drawer"
-      className="pointer-events-auto fixed top-14 right-3 bottom-16 z-30 flex w-[395px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/92 text-slate-100 shadow-2xl backdrop-blur-lg"
+      className="pointer-events-auto fixed inset-x-2 top-14 bottom-20 z-30 flex w-auto flex-col overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/92 text-slate-100 shadow-2xl backdrop-blur-lg sm:inset-x-auto sm:right-3 sm:bottom-16 sm:w-[395px]"
     >
       {/* Drawer Tabs Header */}
       <div className="flex items-center justify-between border-b border-slate-700/80 bg-slate-950/60 px-3 py-2">
@@ -445,4 +445,4 @@ export function LabDrawer() {
       </div>
     </aside>
   );
-}
+});

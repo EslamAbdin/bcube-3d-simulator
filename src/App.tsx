@@ -39,12 +39,28 @@ export function App() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 select-none">
-      <div className="h-full w-full" onContextMenu={(e) => e.preventDefault()}>
+      <div className="h-full w-full touch-none" onContextMenu={(e) => e.preventDefault()}>
         <Canvas
+          frameloop="demand"
           shadows={isHighPerf}
           dpr={isHighPerf ? [1, 1.5] : 1}
+          gl={{
+            antialias: true,
+            powerPreference: 'default',
+            stencil: false,
+            alpha: false,
+          }}
           camera={{ position: [0, 34, 35], fov: 38, near: 0.1, far: 300 }}
-          onCreated={() => setSceneReady(true)}
+          onCreated={({ gl }) => {
+            setSceneReady(true);
+            if (import.meta.env.DEV && typeof window !== 'undefined') {
+              (window as unknown as Record<string, unknown>).__bcubeRendererInfo = () => ({
+                ...gl.info.render,
+                geometries: gl.info.memory.geometries,
+                textures: gl.info.memory.textures,
+              });
+            }
+          }}
           onPointerMissed={() => useSimulatorStore.getState().cancelWiring()}
         >
           <LabEnvironment />

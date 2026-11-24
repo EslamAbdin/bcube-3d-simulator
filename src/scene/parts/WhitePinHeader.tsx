@@ -86,6 +86,7 @@ function buildHeaderHousings(): HeaderHousing[] {
   return housings;
 }
 
+const SHARED_UNIT_BOX_GEO = new THREE.BoxGeometry(1, 1, 1);
 const SHARED_ACTIVE_CAVITY_GEO = new THREE.BoxGeometry(0.13, 0.008, 0.13);
 const SHARED_ACTIVE_PIN_GEO = new THREE.BoxGeometry(0.045, 0.004, 0.045);
 const SHARED_PLASTIC_MAT = new THREE.MeshStandardMaterial({
@@ -109,28 +110,57 @@ const SHARED_CONTACT_PIN_MAT = new THREE.MeshStandardMaterial({
   metalness: 0.85,
 });
 const SHARED_STANDBY_CAVITY_GEO = new THREE.BoxGeometry(0.11, 0.008, 0.11);
+const SHARED_STANDBY_STRIP_MAT = new THREE.MeshStandardMaterial({
+  color: '#ffffff',
+  roughness: 0.46,
+  metalness: 0.04,
+});
 
 /**
  * Renders all active v1 white dual-hole female headers from ALL_SOCKETS
- * using instanced socket cavities and metallic contact pins.
+ * using instanced housings, rims, socket cavities, and metallic contact pins.
  */
 export const ActiveSocketHeaders = memo(function ActiveSocketHeaders() {
   const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
   const housings = useMemo(() => buildHeaderHousings(), []);
 
+  const housingMeshRef = useRef<THREE.InstancedMesh>(null);
+  const rimMeshRef = useRef<THREE.InstancedMesh>(null);
   const cavityMeshRef = useRef<THREE.InstancedMesh>(null);
   const pinMeshRef = useRef<THREE.InstancedMesh>(null);
 
   useLayoutEffect(() => {
     const dummy = new THREE.Object3D();
+    const housingMesh = housingMeshRef.current;
+    const rimMesh = rimMeshRef.current;
+    if (housingMesh && rimMesh) {
+      housings.forEach((h, idx) => {
+        const height = h.yTop - h.yBase;
+        const cy = h.yBase + height / 2;
+
+        dummy.position.set(h.x, cy, h.zCenter);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(h.width, height, h.depth);
+        dummy.updateMatrix();
+        housingMesh.setMatrixAt(idx, dummy.matrix);
+
+        dummy.position.set(h.x, cy + height / 2 - 0.012, h.zCenter);
+        dummy.scale.set(h.width + 0.03, 0.024, h.depth + 0.03);
+        dummy.updateMatrix();
+        rimMesh.setMatrixAt(idx, dummy.matrix);
+      });
+      housingMesh.instanceMatrix.needsUpdate = true;
+      rimMesh.instanceMatrix.needsUpdate = true;
+    }
+
     const cavityMesh = cavityMeshRef.current;
     const pinMesh = pinMeshRef.current;
     if (!cavityMesh || !pinMesh) return;
 
+    dummy.scale.set(1, 1, 1);
     ALL_SOCKETS.forEach((s, idx) => {
       dummy.position.set(s.position.x, s.position.y - 0.001, s.position.z);
       dummy.rotation.set(0, 0, 0);
-      dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       cavityMesh.setMatrixAt(idx, dummy.matrix);
 
@@ -141,28 +171,23 @@ export const ActiveSocketHeaders = memo(function ActiveSocketHeaders() {
 
     cavityMesh.instanceMatrix.needsUpdate = true;
     pinMesh.instanceMatrix.needsUpdate = true;
-  }, []);
+  }, [housings]);
 
   return (
     <group name="active-socket-headers">
-      {housings.map((h) => {
-        const height = h.yTop - h.yBase;
-        return (
-          <group key={h.key} position={[h.x, h.yBase + height / 2, h.zCenter]}>
-            <mesh material={SHARED_PLASTIC_MAT} castShadow={isHighPerf} receiveShadow={isHighPerf}>
-              <boxGeometry args={[h.width, height, h.depth]} />
-            </mesh>
-            <mesh
-              position={[0, height / 2 - 0.012, 0]}
-              material={SHARED_RIM_MAT}
-              receiveShadow={isHighPerf}
-            >
-              <boxGeometry args={[h.width + 0.03, 0.024, h.depth + 0.03]} />
-            </mesh>
-          </group>
-        );
-      })}
-
+      <instancedMesh
+        ref={housingMeshRef}
+        args={[SHARED_UNIT_BOX_GEO, SHARED_PLASTIC_MAT, housings.length]}
+        castShadow={isHighPerf}
+        receiveShadow={isHighPerf}
+        frustumCulled={false}
+      />
+      <instancedMesh
+        ref={rimMeshRef}
+        args={[SHARED_UNIT_BOX_GEO, SHARED_RIM_MAT, housings.length]}
+        receiveShadow={isHighPerf}
+        frustumCulled={false}
+      />
       <instancedMesh
         ref={cavityMeshRef}
         args={[SHARED_ACTIVE_CAVITY_GEO, SHARED_CAVITY_MAT, ALL_SOCKETS.length]}
@@ -192,7 +217,7 @@ export interface StandbyHeaderStripSpec {
 }
 
 /**
- * Renders decorative white/shrouded standby pin headers with instanced cavities.
+ * Renders decorative white/shrouded standby pin headers with instanced housings and cavities.
  */
 export const StandbyHeaderBank = memo(function StandbyHeaderBank({
   strips,
@@ -200,6 +225,7 @@ export const StandbyHeaderBank = memo(function StandbyHeaderBank({
   strips: StandbyHeaderStripSpec[];
 }) {
   const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
+  const stripMeshRef = useRef<THREE.InstancedMesh>(null);
   const cavityMeshRef = useRef<THREE.InstancedMesh>(null);
 
   const cavityPositions = useMemo(() => {
@@ -219,41 +245,50 @@ export const StandbyHeaderBank = memo(function StandbyHeaderBank({
   }, [strips]);
 
   useLayoutEffect(() => {
+    const dummy = new THREE.Object3D();
+    const stripMesh = stripMeshRef.current;
+    if (stripMesh) {
+      const color = new THREE.Color();
+      strips.forEach((s, idx) => {
+        const pX = s.pitchX ?? BOARD_DIMENSIONS.dualHolePitch;
+        const pZ = s.pitchZ ?? 0.44;
+        const width = (s.cols - 1) * pX + 0.28;
+        const depth = (s.rows - 1) * pZ + 0.34;
+        const height = s.yTop - s.yBase;
+
+        dummy.position.set(s.x, s.yBase + height / 2, s.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(width, height, depth);
+        dummy.updateMatrix();
+        stripMesh.setMatrixAt(idx, dummy.matrix);
+        stripMesh.setColorAt(idx, color.set(s.color ?? '#dfe6ee'));
+      });
+      stripMesh.instanceMatrix.needsUpdate = true;
+      if (stripMesh.instanceColor) stripMesh.instanceColor.needsUpdate = true;
+    }
+
     const mesh = cavityMeshRef.current;
     if (!mesh) return;
-    const dummy = new THREE.Object3D();
+    dummy.scale.set(1, 1, 1);
     cavityPositions.forEach(([x, y, z], idx) => {
       dummy.position.set(x, y, z);
       dummy.updateMatrix();
       mesh.setMatrixAt(idx, dummy.matrix);
     });
     mesh.instanceMatrix.needsUpdate = true;
-  }, [cavityPositions]);
+  }, [strips, cavityPositions]);
 
   return (
     <group name="standby-header-bank">
-      {strips.map((s) => {
-        const pX = s.pitchX ?? BOARD_DIMENSIONS.dualHolePitch;
-        const pZ = s.pitchZ ?? 0.44;
-        const width = (s.cols - 1) * pX + 0.28;
-        const depth = (s.rows - 1) * pZ + 0.34;
-        const height = s.yTop - s.yBase;
-        return (
-          <mesh
-            key={s.key}
-            position={[s.x, s.yBase + height / 2, s.z]}
-            castShadow={isHighPerf}
-            receiveShadow={isHighPerf}
-          >
-            <boxGeometry args={[width, height, depth]} />
-            <meshStandardMaterial
-              color={s.color ?? '#dfe6ee'}
-              roughness={0.46}
-              metalness={0.04}
-            />
-          </mesh>
-        );
-      })}
+      {strips.length > 0 && (
+        <instancedMesh
+          ref={stripMeshRef}
+          args={[SHARED_UNIT_BOX_GEO, SHARED_STANDBY_STRIP_MAT, strips.length]}
+          castShadow={isHighPerf}
+          receiveShadow={isHighPerf}
+          frustumCulled={false}
+        />
+      )}
 
       {cavityPositions.length > 0 && (
         <instancedMesh

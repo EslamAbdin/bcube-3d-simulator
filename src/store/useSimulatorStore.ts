@@ -26,7 +26,15 @@ const PERF_MODE_STORAGE_KEY = 'bcube_perf_mode_v1';
 function readInitialPerformanceMode(): PerformanceMode {
   if (typeof window === 'undefined') return 'high';
   try {
-    return window.localStorage.getItem(PERF_MODE_STORAGE_KEY) === 'eco' ? 'eco' : 'high';
+    const saved = window.localStorage.getItem(PERF_MODE_STORAGE_KEY);
+    if (saved === 'eco' || saved === 'high') {
+      return saved;
+    }
+    const isMobileDevice =
+      Boolean(window.matchMedia?.('(pointer: coarse)').matches) ||
+      window.innerWidth < 900 ||
+      /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+    return isMobileDevice ? 'eco' : 'high';
   } catch {
     return 'high';
   }

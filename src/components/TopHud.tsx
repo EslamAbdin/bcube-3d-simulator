@@ -10,7 +10,9 @@ import { playSlideClick, playWireUnplug } from '../utils/soundEffects';
 export const TopHud = memo(function TopHud() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const fileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
   const wireCount = useSimulatorStore((s) => s.wires.length);
@@ -45,14 +47,24 @@ export const TopHud = memo(function TopHud() {
   const togglePerformanceMode = useSimulatorStore((s) => s.togglePerformanceMode);
 
   useEffect(() => {
-    if (!fileMenuOpen) return;
+    if (!fileMenuOpen && !mobileMenuOpen) return;
     const onPointerDown = (e: MouseEvent) => {
-      if (fileMenuRef.current && !fileMenuRef.current.contains(e.target as Node)) {
+      if (fileMenuOpen && fileMenuRef.current && !fileMenuRef.current.contains(e.target as Node)) {
         setFileMenuOpen(false);
+      }
+      if (
+        mobileMenuOpen &&
+        mobileMenuRef.current &&
+        !mobileMenuRef.current.contains(e.target as Node)
+      ) {
+        setMobileMenuOpen(false);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setFileMenuOpen(false);
+      if (e.key === 'Escape') {
+        setFileMenuOpen(false);
+        setMobileMenuOpen(false);
+      }
     };
     window.addEventListener('mousedown', onPointerDown);
     window.addEventListener('keydown', onKeyDown);
@@ -60,11 +72,12 @@ export const TopHud = memo(function TopHud() {
       window.removeEventListener('mousedown', onPointerDown);
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [fileMenuOpen]);
+  }, [fileMenuOpen, mobileMenuOpen]);
 
   const handleResetInputs = () => {
     resetInputs();
     setFileMenuOpen(false);
+    setMobileMenuOpen(false);
     if (soundEnabled) playSlideClick(false);
   };
 
@@ -83,6 +96,7 @@ export const TopHud = memo(function TopHud() {
     const id = e.target.value;
     if (!id) return;
     loadPreset(id);
+    setMobileMenuOpen(false);
     if (soundEnabled) playSlideClick(true);
   };
 
@@ -96,6 +110,7 @@ export const TopHud = memo(function TopHud() {
     a.click();
     URL.revokeObjectURL(url);
     setFileMenuOpen(false);
+    setMobileMenuOpen(false);
     showToast('Exported bcube-circuit.json', 'success');
   };
 
@@ -103,6 +118,7 @@ export const TopHud = memo(function TopHud() {
     const file = e.target.files?.[0];
     e.target.value = '';
     setFileMenuOpen(false);
+    setMobileMenuOpen(false);
     if (!file) return;
     try {
       const text = await file.text();
@@ -130,13 +146,289 @@ export const TopHud = memo(function TopHud() {
       showToast('URL hash updated — copy the address bar link to share.', 'info');
     }
     setFileMenuOpen(false);
+    setMobileMenuOpen(false);
   };
 
   const pillClass =
     'pointer-events-auto flex items-center gap-1 rounded-xl border border-slate-700/75 bg-slate-900/88 px-2 py-1 text-slate-100 shadow-2xl backdrop-blur-md';
 
   return (
-    <header className="pointer-events-none fixed top-2.5 right-3 left-3 z-20 flex flex-wrap items-center justify-between gap-1.5">
+    <header className="pointer-events-none fixed top-2 right-2 left-2 z-20 sm:top-2.5 sm:right-3 sm:left-3">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,application/json"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+
+      {/* Compact Mobile & Tablet Top Bar (< 1280px) */}
+      <div className="flex flex-col items-stretch gap-1.5 xl:hidden" ref={mobileMenuRef}>
+        <div className="pointer-events-auto flex items-center justify-between gap-1 rounded-xl border border-slate-700/75 bg-slate-900/90 px-2 py-1 text-slate-100 shadow-2xl backdrop-blur-md">
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.85)]" />
+            <span className="whitespace-nowrap text-[11px] font-semibold tracking-wide text-slate-100">
+              bCube
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <div className="flex items-center rounded-lg border border-slate-700/80 bg-slate-950/75 p-0.5">
+              <button
+                type="button"
+                onClick={() => setCameraMode('3d')}
+                className={`cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                  cameraMode === '3d' ? 'bg-sky-500 text-white' : 'text-slate-300'
+                }`}
+              >
+                3D
+              </button>
+              <button
+                type="button"
+                onClick={() => setCameraMode('2d')}
+                className={`cursor-pointer rounded-md px-2 py-0.5 text-[11px] font-medium transition-colors ${
+                  cameraMode === '2d' ? 'bg-sky-500 text-white' : 'text-slate-300'
+                }`}
+              >
+                2D
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleSignalFlow}
+              aria-pressed={signalFlowEnabled}
+              className={`cursor-pointer rounded-md border px-1.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                signalFlowEnabled
+                  ? 'border-emerald-400/70 bg-emerald-500/25 text-emerald-200'
+                  : 'border-slate-700/80 bg-slate-800/80 text-slate-300'
+              }`}
+            >
+              X-Ray
+            </button>
+
+            {wireCount > 0 && (
+              <button
+                type="button"
+                onClick={handleUndo}
+                className="cursor-pointer rounded-md border border-slate-700/80 bg-slate-800/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-200"
+              >
+                Undo
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={togglePerformanceMode}
+              aria-pressed={performanceMode === 'eco'}
+              className={`cursor-pointer rounded-md border px-1.5 py-0.5 text-[11px] font-semibold transition-colors ${
+                performanceMode === 'eco'
+                  ? 'border-emerald-400/60 bg-emerald-500/20 text-emerald-200'
+                  : 'border-slate-700/80 bg-slate-800/80 text-slate-300'
+              }`}
+            >
+              {performanceMode === 'high' ? 'HQ' : 'Eco'}
+            </button>
+
+            <button
+              type="button"
+              aria-label="Toggle tools menu"
+              aria-expanded={mobileMenuOpen}
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              className={`cursor-pointer rounded-lg border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+                mobileMenuOpen
+                  ? 'border-sky-400/70 bg-sky-500/25 text-sky-200'
+                  : 'border-slate-700/80 bg-slate-800/90 text-slate-100'
+              }`}
+            >
+              Tools {mobileMenuOpen ? '✕' : '☰'}
+            </button>
+          </div>
+        </div>
+
+        {mobileMenuOpen && (
+          <div className="pointer-events-auto flex max-h-[72vh] flex-col gap-2.5 overflow-y-auto rounded-2xl border border-slate-700/80 bg-slate-900/95 p-3 text-slate-100 shadow-2xl backdrop-blur-lg">
+            {/* Presets */}
+            <div className="flex items-center gap-2">
+              <label htmlFor="mobile-preset-select" className="text-[11px] font-semibold text-slate-400">
+                Preset
+              </label>
+              <select
+                id="mobile-preset-select"
+                aria-label="Load lab preset mobile"
+                value={activePresetInfo?.id ?? ''}
+                onChange={handlePresetChange}
+                className="flex-1 cursor-pointer rounded-lg border border-slate-700/80 bg-slate-950/90 px-2 py-1.5 text-xs font-medium text-slate-200 focus:border-sky-400 focus:outline-none"
+              >
+                <option value="" disabled>
+                  Lab Presets…
+                </option>
+                <option value="empty">Empty Board</option>
+                {PRESET_CIRCUITS.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Study Tabs & Reset */}
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  toggleDrawerTab('truth-table');
+                  setMobileMenuOpen(false);
+                }}
+                className={`cursor-pointer rounded-lg border px-2 py-1.5 text-xs font-semibold ${
+                  activeDrawerTab === 'truth-table'
+                    ? 'border-sky-400/70 bg-sky-500/25 text-sky-200'
+                    : 'border-slate-700/80 bg-slate-800/80 text-slate-200'
+                }`}
+              >
+                Truth Table
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  toggleDrawerTab('challenges');
+                  setMobileMenuOpen(false);
+                }}
+                className={`cursor-pointer rounded-lg border px-2 py-1.5 text-xs font-semibold ${
+                  activeDrawerTab === 'challenges'
+                    ? 'border-sky-400/70 bg-sky-500/25 text-sky-200'
+                    : 'border-slate-700/80 bg-slate-800/80 text-slate-200'
+                }`}
+              >
+                Challenges
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerCameraReset();
+                  setMobileMenuOpen(false);
+                }}
+                className="cursor-pointer rounded-lg border border-slate-700/80 bg-slate-800/80 px-2 py-1.5 text-xs font-medium text-slate-200"
+              >
+                Reset View
+              </button>
+            </div>
+
+            {/* Wire Colors + Clear */}
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-2.5 py-2">
+              <div className="flex items-center gap-1.5">
+                {WIRE_COLORS.map((c) => {
+                  const active = activeWireColor.toLowerCase() === c.hex.toLowerCase();
+                  return (
+                    <button
+                      key={c.name}
+                      type="button"
+                      aria-label={`Mobile wire color ${c.name}`}
+                      onClick={() => setActiveWireColor(c.hex)}
+                      className={`h-4.5 w-4.5 cursor-pointer rounded-full border ${
+                        active ? 'scale-110 border-white ring-2 ring-sky-400' : 'border-slate-500/80'
+                      }`}
+                      style={{ backgroundColor: c.hex }}
+                    />
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={toggleAutoCycleWireColor}
+                  className={`ml-1 cursor-pointer rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+                    autoCycleWireColor
+                      ? 'border-sky-400/60 bg-sky-500/20 text-sky-200'
+                      : 'border-slate-700/80 bg-slate-800/80 text-slate-400'
+                  }`}
+                >
+                  Auto
+                </button>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-slate-400">{wireCount}w</span>
+                <button
+                  type="button"
+                  disabled={wireCount === 0}
+                  onClick={handleClearWires}
+                  className="cursor-pointer rounded-md border border-slate-700/80 bg-slate-800/80 px-2 py-0.5 text-[11px] font-medium text-rose-200 disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* TTL, Sound, Help & File Actions */}
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => setTtlFloatingIsHigh(!ttlFloatingIsHigh)}
+                className={`cursor-pointer rounded-lg border px-2 py-1.5 text-[11px] font-medium ${
+                  ttlFloatingIsHigh
+                    ? 'border-amber-400/60 bg-amber-500/20 text-amber-200'
+                    : 'border-slate-700/80 bg-slate-800/80 text-slate-300'
+                }`}
+              >
+                TTL: {ttlFloatingIsHigh ? 'HIGH' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                onClick={toggleSound}
+                className={`cursor-pointer rounded-lg border px-2 py-1.5 text-[11px] font-medium ${
+                  soundEnabled
+                    ? 'border-emerald-500/40 bg-emerald-500/15 text-emerald-200'
+                    : 'border-slate-700/80 bg-slate-800/80 text-slate-400'
+                }`}
+              >
+                Sound: {soundEnabled ? 'On' : 'Off'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setHelpModalOpen(true);
+                  setMobileMenuOpen(false);
+                }}
+                className="cursor-pointer rounded-lg border border-slate-700/80 bg-slate-800/80 px-2 py-1.5 text-[11px] font-semibold text-sky-300"
+              >
+                Help Guide
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-1.5 border-t border-slate-800 pt-2">
+              <button
+                type="button"
+                onClick={handleExportJSON}
+                className="cursor-pointer rounded-lg border border-slate-700/70 bg-slate-950/70 px-2 py-1.5 text-[11px] font-medium text-slate-200"
+              >
+                Export JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="cursor-pointer rounded-lg border border-slate-700/70 bg-slate-950/70 px-2 py-1.5 text-[11px] font-medium text-slate-200"
+              >
+                Import JSON…
+              </button>
+              <button
+                type="button"
+                onClick={handleShareLink}
+                className="cursor-pointer rounded-lg border border-slate-700/70 bg-slate-950/70 px-2 py-1.5 text-[11px] font-medium text-sky-300"
+              >
+                {copiedLink ? 'Copied!' : 'Copy Share Link'}
+              </button>
+              <button
+                type="button"
+                onClick={handleResetInputs}
+                className="cursor-pointer rounded-lg border border-slate-700/70 bg-slate-950/70 px-2 py-1.5 text-[11px] font-medium text-amber-200"
+              >
+                Reset Inputs
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Desktop Single-Row Top Bar (>= 1280px, unchanged 1366px+ layout) */}
+      <div className="hidden w-full flex-wrap items-center justify-between gap-1.5 xl:flex">
       {/* Left: Brand, Lab Presets & File/Share Popover */}
       <div className={pillClass}>
         <div className="flex items-center gap-1.5 pr-0.5">
@@ -207,14 +499,6 @@ export const TopHud = memo(function TopHud() {
             </div>
           )}
         </div>
-
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,application/json"
-          className="hidden"
-          onChange={handleImportFile}
-        />
       </div>
 
       {/* Center: Wire Palette, X-Ray Signal Flow, Undo & Clear */}
@@ -428,6 +712,7 @@ export const TopHud = memo(function TopHud() {
         >
           ?
         </button>
+      </div>
       </div>
     </header>
   );

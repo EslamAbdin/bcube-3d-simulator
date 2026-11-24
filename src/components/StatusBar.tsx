@@ -2,6 +2,7 @@ import { memo, useEffect } from 'react';
 import type { SignalLevel } from '../engine/gateEvaluators';
 import { MODULE_MAP, SOCKET_MAP } from '../schema/boardSchema';
 import { useSimulatorStore } from '../store/useSimulatorStore';
+import { playWireUnplug } from '../utils/soundEffects';
 
 const SIGNAL_BADGE_CLASSES: Record<SignalLevel, string> = {
   HIGH: 'border-emerald-400/50 bg-emerald-500/20 text-emerald-200',
@@ -86,10 +87,10 @@ export const StatusBar = memo(function StatusBar() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-center gap-2 rounded-full border border-slate-700/75 bg-slate-900/85 px-4 py-1.5 text-xs text-slate-200 shadow-2xl backdrop-blur-md">
+      <div className="flex flex-wrap items-center justify-center gap-1.5 rounded-2xl border border-slate-700/75 bg-slate-900/88 px-3 py-1.5 text-[11px] text-slate-200 shadow-2xl backdrop-blur-md sm:gap-2 sm:rounded-full sm:px-4 sm:text-xs">
         {originSocket ? (
           <>
-            <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+            <span className="inline-block h-2 w-2 shrink-0 animate-pulse rounded-full bg-amber-400" />
             <span>
               Wiring from <strong className="text-amber-200">{originSocket.tooltip}</strong>
               {hoveredSocket && hoveredSocket.id !== originSocket.id ? (
@@ -98,11 +99,16 @@ export const StatusBar = memo(function StatusBar() {
                   → <strong className="text-sky-300">{hoveredSocket.tooltip}</strong>
                 </>
               ) : (
-                ' — Click target socket to connect'
+                ' — Tap target hole'
               )}
             </span>
-            <span className="text-slate-500">•</span>
-            <span className="text-slate-400">Esc or Right-Click to cancel</span>
+            <button
+              type="button"
+              onClick={() => useSimulatorStore.getState().cancelWiring()}
+              className="pointer-events-auto cursor-pointer rounded-full border border-slate-600/80 bg-slate-800 px-2.5 py-0.5 text-[11px] font-semibold text-slate-200 transition-colors hover:border-slate-400 hover:bg-slate-700"
+            >
+              Cancel
+            </button>
           </>
         ) : hoveredSocket ? (
           <>
@@ -116,9 +122,27 @@ export const StatusBar = memo(function StatusBar() {
             </span>
           </>
         ) : selectedWireId ? (
-          <span className="text-sky-200">
-            Wire selected — Press Delete/Backspace or Right-Click wire to remove • Esc to deselect
-          </span>
+          <>
+            <span className="text-sky-200">Wire selected</span>
+            <button
+              type="button"
+              onClick={() => {
+                const st = useSimulatorStore.getState();
+                st.removeWire(selectedWireId);
+                if (st.soundEnabled) playWireUnplug();
+              }}
+              className="pointer-events-auto cursor-pointer rounded-full border border-rose-500/60 bg-rose-500/20 px-2.5 py-0.5 text-[11px] font-semibold text-rose-200 transition-colors hover:bg-rose-500/35"
+            >
+              Delete Wire
+            </button>
+            <button
+              type="button"
+              onClick={() => useSimulatorStore.getState().selectWire(null)}
+              className="pointer-events-auto cursor-pointer rounded-full border border-slate-600/80 bg-slate-800 px-2.5 py-0.5 text-[11px] font-medium text-slate-300 transition-colors hover:bg-slate-700"
+            >
+              Deselect
+            </button>
+          </>
         ) : hoveredStandby ? (
           <>
             <span className="font-medium text-slate-200">{hoveredStandby.label}</span>
@@ -128,9 +152,14 @@ export const StatusBar = memo(function StatusBar() {
             </span>
           </>
         ) : (
-          <span className="text-slate-400">
-            Click any header socket to wire • Right-Click wire to remove • Ctrl+Z undo • V for 2D
-            View
+          <span className="text-center text-slate-400">
+            <span className="hidden xl:inline">
+              Click any header socket to wire • Right-Click wire to remove • Ctrl+Z undo • V for 2D
+              View
+            </span>
+            <span className="xl:hidden">
+              Tap sockets to wire • Tap wire to delete • 1-finger orbit / 2-finger pinch
+            </span>
           </span>
         )}
       </div>

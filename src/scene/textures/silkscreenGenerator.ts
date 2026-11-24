@@ -4,6 +4,7 @@
    ========================================================================= */
 
 import { useEffect, useMemo, type DependencyList } from 'react';
+import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   ALL_MODULES,
@@ -18,7 +19,10 @@ import {
 function finalizeTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 8;
+  const isCompact =
+    typeof window !== 'undefined' &&
+    (Boolean(window.matchMedia?.('(pointer: coarse)').matches) || window.innerWidth < 900);
+  tex.anisotropy = isCompact ? 2 : 4;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
   tex.magFilter = THREE.LinearFilter;
   tex.needsUpdate = true;
@@ -27,21 +31,23 @@ function finalizeTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
 
 /**
  * React 19 StrictMode-safe CanvasTexture hook:
- * marks needsUpdate on mount and disposes GPU resources on unmount.
+ * marks needsUpdate on mount, triggers on-demand repaint, and disposes GPU resources on unmount.
  */
 export function useCanvasTexture(
   factory: () => THREE.CanvasTexture,
   deps: DependencyList
 ): THREE.CanvasTexture {
+  const invalidate = useThree((s) => s.invalidate);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const texture = useMemo(factory, deps);
 
   useEffect(() => {
     texture.needsUpdate = true;
+    invalidate();
     return () => {
       texture.dispose();
     };
-  }, [texture]);
+  }, [texture, invalidate]);
 
   return texture;
 }

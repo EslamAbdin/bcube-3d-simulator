@@ -116,9 +116,9 @@ export const DipICChip = memo(function DipICChip({
         <meshStandardMaterial map={topTex} roughness={0.5} metalness={0.1} />
       </mesh>
 
-      {/* Metallic side pins */}
-      <instancedMesh ref={shoulderRef} args={[SHARED_SHOULDER_GEO, pinMat, pinCount]} castShadow={castShadow} />
-      <instancedMesh ref={legRef} args={[SHARED_LEG_GEO, pinMat, pinCount]} castShadow={castShadow} />
+      {/* Metallic side pins (omit tiny pin shadow-map passes to save 40+ draw calls) */}
+      <instancedMesh ref={shoulderRef} args={[SHARED_SHOULDER_GEO, pinMat, pinCount]} />
+      <instancedMesh ref={legRef} args={[SHARED_LEG_GEO, pinMat, pinCount]} />
     </group>
   );
 });

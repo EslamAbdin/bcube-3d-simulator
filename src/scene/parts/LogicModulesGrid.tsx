@@ -79,21 +79,12 @@ const ActiveGateModuleCard = memo(function ActiveGateModuleCard({
   castShadow: boolean;
 }) {
   const tex = useCanvasTexture(() => createActiveGateModuleTexture(mod), [mod]);
-  const { pcbBottomY, silkscreenY } = BOARD_DIMENSIONS.daughterModule;
+  const { silkscreenY } = BOARD_DIMENSIONS.daughterModule;
   const gType = mod.type as ActiveGateModuleType;
 
   return (
     <group name={`active-module-${mod.id}`}>
-      {/* Daughter PCB slab sitting on brass hex standoffs (Y = 0.05 to 0.20) */}
-      <mesh
-        position={[mod.position.x, pcbBottomY + DAUGHTER_T / 2, mod.position.z]}
-        geometry={SHARED_DAUGHTER_PCB_GEO}
-        material={SHARED_ACTIVE_SLAB_MAT}
-        castShadow={castShadow}
-        receiveShadow={castShadow}
-      />
-
-      {/* High-DPI 512×512 Silkscreen & IEEE Gate Symbols at Y = 0.204 */}
+      {/* High-DPI 512×512 Silkscreen & IEEE Gate Symbols at Y = 0.204 (slab instanced at grid level) */}
       <mesh
         position={[mod.position.x, silkscreenY, mod.position.z]}
         rotation={[-Math.PI / 2, 0, 0]}
@@ -124,21 +115,12 @@ const StandbyModuleCard = memo(function StandbyModuleCard({
   castShadow: boolean;
 }) {
   const tex = useCanvasTexture(() => createStandbyModuleTexture(mod), [mod]);
-  const { pcbBottomY, silkscreenY } = BOARD_DIMENSIONS.daughterModule;
+  const { silkscreenY } = BOARD_DIMENSIONS.daughterModule;
   const spec = STANDBY_IC_SPECS[mod.id] ?? { code: mod.shortLabel, pins: 14 as const, len: 1.82, wid: 0.46 };
 
   return (
     <group name={`standby-module-${mod.id}`}>
-      {/* Slightly cooler/muted daughter PCB slab */}
-      <mesh
-        position={[mod.position.x, pcbBottomY + DAUGHTER_T / 2, mod.position.z]}
-        geometry={SHARED_DAUGHTER_PCB_GEO}
-        material={SHARED_STANDBY_SLAB_MAT}
-        castShadow={castShadow}
-        receiveShadow={castShadow}
-      />
-
-      {/* Standby Silkscreen plane */}
+      {/* Standby Silkscreen plane (slab instanced at grid level) */}
       <mesh
         position={[mod.position.x, silkscreenY, mod.position.z]}
         rotation={[-Math.PI / 2, 0, 0]}
@@ -212,6 +194,8 @@ export const LogicModulesGrid = memo(function LogicModulesGrid() {
     return list;
   }, [standbyModules]);
 
+  const activeSlabRef = useRef<THREE.InstancedMesh>(null);
+  const standbySlabRef = useRef<THREE.InstancedMesh>(null);
   const standoffRef = useRef<THREE.InstancedMesh>(null);
   const postRef = useRef<THREE.InstancedMesh>(null);
   const boreRef = useRef<THREE.InstancedMesh>(null);
@@ -220,6 +204,28 @@ export const LogicModulesGrid = memo(function LogicModulesGrid() {
 
   useLayoutEffect(() => {
     const dummy = new THREE.Object3D();
+    const slabY = BOARD_DIMENSIONS.daughterModule.pcbBottomY + DAUGHTER_T / 2;
+
+    if (activeSlabRef.current) {
+      activeModules.forEach((mod, idx) => {
+        dummy.position.set(mod.position.x, slabY, mod.position.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        activeSlabRef.current!.setMatrixAt(idx, dummy.matrix);
+      });
+      activeSlabRef.current.instanceMatrix.needsUpdate = true;
+    }
+
+    if (standbySlabRef.current) {
+      standbyModules.forEach((mod, idx) => {
+        dummy.position.set(mod.position.x, slabY, mod.position.z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.updateMatrix();
+        standbySlabRef.current!.setMatrixAt(idx, dummy.matrix);
+      });
+      standbySlabRef.current.instanceMatrix.needsUpdate = true;
+    }
+
     const standoffs = standoffRef.current;
     const posts = postRef.current;
     const bores = boreRef.current;
@@ -261,10 +267,23 @@ export const LogicModulesGrid = memo(function LogicModulesGrid() {
     standoffs.instanceMatrix.needsUpdate = true;
     posts.instanceMatrix.needsUpdate = true;
     bores.instanceMatrix.needsUpdate = true;
-  }, [daughterModules]);
+  }, [daughterModules, activeModules, standbyModules]);
 
   return (
     <group name="logic-modules-grid">
+      <instancedMesh
+        ref={activeSlabRef}
+        args={[SHARED_DAUGHTER_PCB_GEO, SHARED_ACTIVE_SLAB_MAT, activeModules.length]}
+        castShadow={isHighPerf}
+        receiveShadow={isHighPerf}
+      />
+      <instancedMesh
+        ref={standbySlabRef}
+        args={[SHARED_DAUGHTER_PCB_GEO, SHARED_STANDBY_SLAB_MAT, standbyModules.length]}
+        castShadow={isHighPerf}
+        receiveShadow={isHighPerf}
+      />
+
       {activeModules.map((mod) => (
         <ActiveGateModuleCard key={mod.id} mod={mod} castShadow={isHighPerf} />
       ))}

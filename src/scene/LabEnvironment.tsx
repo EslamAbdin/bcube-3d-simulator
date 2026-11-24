@@ -9,11 +9,13 @@ import { useSimulatorStore } from '../store/useSimulatorStore';
 export const LabEnvironment = memo(function LabEnvironment() {
   const isHighPerf = useSimulatorStore((s) => s.performanceMode === 'high');
   const gl = useThree((s) => s.gl);
+  const invalidate = useThree((s) => s.invalidate);
 
   useEffect(() => {
     gl.shadowMap.enabled = isHighPerf;
     gl.shadowMap.needsUpdate = true;
-  }, [gl, isHighPerf]);
+    invalidate();
+  }, [gl, isHighPerf, invalidate]);
 
   return (
     <group name="lab-environment">

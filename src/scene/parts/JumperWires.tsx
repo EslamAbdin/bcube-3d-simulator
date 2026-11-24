@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { useFrame, type ThreeEvent } from '@react-three/fiber';
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { WireSpec } from '../../engine/LogicEngine';
 import { SOCKET_MAP, type Vec3 } from '../../schema/boardSchema';
@@ -69,6 +69,7 @@ const SeatedWire = memo(function SeatedWire({
 
   const signalFlowEnabled = useSimulatorStore((s) => s.signalFlowEnabled);
   const wireSignal = useSimulatorStore((s) => s.socketStates[wire.fromSocketId] ?? 'FLOATING');
+  const invalidate = useThree((s) => s.invalidate);
 
   const fromSock = SOCKET_MAP[wire.fromSocketId];
   const toSock = SOCKET_MAP[wire.toSocketId];
@@ -77,20 +78,26 @@ const SeatedWire = memo(function SeatedWire({
     signalFlowEnabled && (wireSignal === 'HIGH' || wireSignal === 'CONFLICT');
   const needHalo = isSelected || showXrayHalo;
 
-  // Strictly memoize curve + primary TubeGeometry ONLY on endpoint geometry & wire ID (zero rebuild on signal/hover/select)
+  // Strictly memoize curve + primary TubeGeometry ONLY on endpoint geometry, wire ID & LOD quality
   const curve = useMemo(() => {
     if (!fromSock || !toSock) return null;
     return buildJumperCurve(fromSock.position, toSock.position, wire.id);
   }, [fromSock, toSock, wire.id]);
 
   const tubeGeo = useMemo(
-    () => (curve ? new THREE.TubeGeometry(curve, 36, 0.056, 10, false) : null),
-    [curve]
+    () =>
+      curve
+        ? new THREE.TubeGeometry(curve, castShadow ? 36 : 22, 0.056, castShadow ? 10 : 7, false)
+        : null,
+    [curve, castShadow]
   );
 
   const haloGeo = useMemo(
-    () => (curve && needHalo ? new THREE.TubeGeometry(curve, 32, 0.095, 10, false) : null),
-    [curve, needHalo]
+    () =>
+      curve && needHalo
+        ? new THREE.TubeGeometry(curve, castShadow ? 32 : 18, 0.095, castShadow ? 10 : 6, false)
+        : null,
+    [curve, needHalo, castShadow]
   );
 
   useEffect(() => {
@@ -109,6 +116,7 @@ const SeatedWire = memo(function SeatedWire({
     if (!tubeMatRef.current) return;
     if (signalFlowEnabled && wireSignal === 'CONFLICT') {
       tubeMatRef.current.emissiveIntensity = 1.45 + Math.sin(clock.elapsedTime * 12) * 0.75;
+      invalidate();
     }
   });
 
@@ -177,7 +185,7 @@ const SeatedWire = memo(function SeatedWire({
   };
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
-    if (e.delta > 5) return;
+    if (e.delta > 8) return;
     e.stopPropagation();
     const store = useSimulatorStore.getState();
     store.selectWire(isSelected ? null : wire.id);
@@ -255,6 +263,7 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
 }) {
   const originSock = SOCKET_MAP[pendingSocketId];
   const activeWireColor = useSimulatorStore((s) => s.activeWireColor);
+  const invalidate = useThree((s) => s.invalidate);
 
   const tubeMeshRef = useRef<THREE.Mesh>(null);
   const snapBootRef = useRef<THREE.Mesh>(null);
@@ -306,11 +315,12 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
 
     lastBuiltTargetRef.current.set(tx, ty, tz);
     const curve = buildJumperCurve(originSock.position, { x: tx, y: ty, z: tz }, 'ghost-wire');
-    const nextGeo = new THREE.TubeGeometry(curve, 32, 0.052, 8, false);
+    const nextGeo = new THREE.TubeGeometry(curve, castShadow ? 32 : 20, 0.052, 7, false);
     const prevGeo = currentGeoRef.current;
     tubeMeshRef.current.geometry = nextGeo;
     currentGeoRef.current = nextGeo;
     prevGeo?.dispose();
+    invalidate();
   });
 
   if (!originSock) return null;
@@ -349,9 +359,10 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
         material={SHARED_GHOST_TRACK_MAT}
         onPointerMove={(e) => {
           pointerTargetRef.current.set(e.point.x, 0.28, e.point.z);
+          invalidate();
         }}
         onClick={(e) => {
-          if (e.delta > 5) return;
+          if (e.delta > 8) return;
           e.stopPropagation();
           useSimulatorStore.getState().cancelWiring();
         }}
