@@ -1,4 +1,5 @@
 import { memo, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { GUIDED_LESSONS } from '../data/guidedLessons';
 import { PRESET_CIRCUITS } from '../data/presetCircuits';
 import { useSimulatorStore, WIRE_COLORS } from '../store/useSimulatorStore';
 import { playSlideClick, playWireUnplug } from '../utils/soundEffects';
@@ -52,6 +53,14 @@ export const TopHud = memo(function TopHud() {
   const teachingMode = useSimulatorStore((s) => s.teachingMode);
   const teachingLang = useSimulatorStore((s) => s.teachingLang);
   const toggleTeachingMode = useSimulatorStore((s) => s.toggleTeachingMode);
+  const activeGuidedLessonId = useSimulatorStore((s) => s.activeGuidedLessonId);
+  const startGuidedLesson = useSimulatorStore((s) => s.startGuidedLesson);
+  const stopGuidedLesson = useSimulatorStore((s) => s.stopGuidedLesson);
+
+  const handleToggleGuide = () => {
+    if (activeGuidedLessonId) stopGuidedLesson();
+    else startGuidedLesson(GUIDED_LESSONS[0].id);
+  };
 
   const errorWarningsEnabled = useSimulatorStore((s) => s.errorWarningsEnabled);
   const toggleErrorWarnings = useSimulatorStore((s) => s.toggleErrorWarnings);
@@ -381,6 +390,21 @@ export const TopHud = memo(function TopHud() {
 
             {/* Study, Visualizers & Reset */}
             <div className="grid grid-cols-3 gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  handleToggleGuide();
+                  setMobileMenuOpen(false);
+                }}
+                aria-pressed={Boolean(activeGuidedLessonId)}
+                className={`cursor-pointer rounded-lg border px-2 py-1.5 text-xs font-semibold ${
+                  activeGuidedLessonId
+                    ? 'border-amber-400/75 bg-amber-500/25 text-amber-200'
+                    : 'border-slate-700/80 bg-slate-800/80 text-amber-300'
+                }`}
+              >
+                {teachingLang === 'ar' ? 'مرشد خطوة' : 'Step Guide'}
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -773,8 +797,22 @@ export const TopHud = memo(function TopHud() {
           </button>
         </div>
 
-        {/* Right: Study Workbench Tabs, Teaching Mode, Camera Mode, TTL, Perf, Sound & Help */}
+        {/* Right: Study Workbench Tabs, Guided Instructor, Teaching Mode, Camera Mode, TTL, Perf, Sound & Help */}
         <div className={pillClass}>
+          <button
+            type="button"
+            onClick={handleToggleGuide}
+            aria-pressed={Boolean(activeGuidedLessonId)}
+            title="Step-by-step visual & written instructor guide (EN / عربي)"
+            className={`cursor-pointer whitespace-nowrap rounded-lg border px-1.5 py-1 text-[11px] font-semibold transition-colors ${
+              activeGuidedLessonId
+                ? 'border-amber-400/75 bg-amber-500/25 text-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.28)]'
+                : 'border-slate-700/80 bg-slate-800/80 text-amber-300 hover:border-amber-400/60'
+            }`}
+          >
+            {teachingLang === 'ar' ? 'مرشد' : 'Guide'}
+          </button>
+
           <button
             type="button"
             onClick={toggleTeachingMode}

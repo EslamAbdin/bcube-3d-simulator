@@ -171,6 +171,7 @@ interface SimulatorState {
   errorWarningsEnabled: boolean;
   highlightedDiagnosticId: string | null;
   pendingWireWarning: PendingWireWarning | null;
+  activeGuidedLessonId: string | null;
   touchTwoFingerMode: TouchTwoFingerMode;
 
   // Derived simulation state
@@ -219,6 +220,8 @@ interface SimulatorState {
   setHoveredIcType: (icType: ActiveGateModuleType | null) => void;
   toggleErrorWarnings: () => void;
   setHighlightedDiagnosticId: (diagId: string | null) => void;
+  startGuidedLesson: (lessonId: string) => void;
+  stopGuidedLesson: () => void;
   toggleTouchTwoFingerMode: () => void;
   loadTeachingDemo: (
     wires: WireSpec[],
@@ -350,6 +353,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   errorWarningsEnabled: readInitialErcEnabled(),
   highlightedDiagnosticId: null,
   pendingWireWarning: null,
+  activeGuidedLessonId: null,
   touchTwoFingerMode: 'orbit',
   ...initialDerived,
 
@@ -680,6 +684,27 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     }),
 
   setHighlightedDiagnosticId: (diagId) => set({ highlightedDiagnosticId: diagId }),
+
+  startGuidedLesson: (lessonId) => {
+    const s = get();
+    const switches = makeDefaultSwitches();
+    const buttons = makeDefaultButtons();
+    set({
+      switches,
+      buttons,
+      latchedButtons: makeDefaultButtons(),
+      wires: [],
+      pendingSocketId: null,
+      selectedWireId: null,
+      highlightedDiagnosticId: null,
+      pendingWireWarning: null,
+      activePresetInfo: null,
+      activeGuidedLessonId: lessonId,
+      ...computeDerived(switches, buttons, [], s.ttlFloatingIsHigh),
+    });
+  },
+
+  stopGuidedLesson: () => set({ activeGuidedLessonId: null }),
 
   toggleTouchTwoFingerMode: () =>
     set((s) => ({

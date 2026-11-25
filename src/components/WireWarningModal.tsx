@@ -44,7 +44,7 @@ export function WireWarningModal() {
       aria-modal="true"
       aria-labelledby="bcube-wire-warning-title"
       onClick={dismissPendingWireWarning}
-      className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
     >
       <div
         onClick={(e) => e.stopPropagation()}

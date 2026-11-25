@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
+import { GuidedInstructorBar } from './components/GuidedInstructorBar';
 import { HelpModal } from './components/HelpModal';
 import { IcInspectorModal } from './components/IcInspectorModal';
 import { LabDrawer } from './components/LabDrawer';
@@ -11,6 +12,7 @@ import { CameraRig } from './scene/CameraRig';
 import { LabEnvironment } from './scene/LabEnvironment';
 import { ActiveIOModules } from './scene/parts/ActiveIOModules';
 import { BoardChassis } from './scene/parts/BoardChassis';
+import { GuidedInstructorOverlay } from './scene/parts/GuidedInstructorOverlay';
 import { JumperWires } from './scene/parts/JumperWires';
 import { LogicModulesGrid } from './scene/parts/LogicModulesGrid';
 import { SocketHitboxes } from './scene/parts/SocketHitboxes';
@@ -76,6 +78,7 @@ export function App() {
           <LogicModulesGrid />
           <SocketHitboxes />
           <JumperWires />
+          <GuidedInstructorOverlay />
         </Canvas>
       </div>
 
@@ -89,6 +92,7 @@ export function App() {
       )}
 
       <TopHud />
+      <GuidedInstructorBar />
       <TeachingPanel />
       <LabDrawer />
       <StatusBar />

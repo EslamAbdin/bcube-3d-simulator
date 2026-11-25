@@ -174,6 +174,15 @@ describe('wiringDiagnostics (ERC)', () => {
     );
     store.dismissPendingWireWarning();
 
+    // Connecting two gate outputs directly (OUTPUT_TO_OUTPUT) triggers warning first
+    store.startWiring('IC_7408:PIN3:A');
+    const outRes = store.completeWiring('IC_7432:PIN3:A');
+    expect(outRes).toEqual({ ok: false, reason: 'warning' });
+    expect(useSimulatorStore.getState().pendingWireWarning?.diagnostics[0].code).toBe(
+      'OUTPUT_TO_OUTPUT'
+    );
+    store.dismissPendingWireWarning();
+
     // Turning ERC OFF skips the warning gate
     store.toggleErrorWarnings();
     store.startWiring('IC_7404:PIN2:A');
