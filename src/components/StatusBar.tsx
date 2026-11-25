@@ -266,7 +266,7 @@ export const StatusBar = memo(function StatusBar() {
               View
             </span>
             <span className="xl:hidden">
-              1-finger tap/drag to wire • Tap wire to delete • 2-finger move/zoom
+              1-finger wire • Double-tap/hold wire to remove • 2-finger move/zoom
             </span>
           </span>
         )}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PRESET_CIRCUITS } from '../../data/presetCircuits';
+import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { runSimulation, type WireSpec } from '../LogicEngine';
 import { analyzeWiringErrors } from '../wiringDiagnostics';
 
@@ -115,5 +116,18 @@ describe('wiringDiagnostics (ERC)', () => {
       const diags = runErc(wires, preset.initialSwitches ?? {});
       expect(diags, `Preset "${preset.name}" should have 0 ERC diagnostics`).toEqual([]);
     }
+  });
+
+  it('safeguard rejects connecting two holes of the same pin (identical nodeId)', () => {
+    const store = useSimulatorStore.getState();
+    store.resetBoard();
+    expect(store.addWire('SLIDE_SWITCH:SW1:A', 'SLIDE_SWITCH:SW1:B')).toBe(false);
+
+    store.startWiring('IC_7408:PIN1:A');
+    const res = store.completeWiring('IC_7408:PIN1:B');
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe('self');
+    expect(useSimulatorStore.getState().wires).toHaveLength(0);
+    expect(useSimulatorStore.getState().pendingSocketId).toBeNull();
   });
 });

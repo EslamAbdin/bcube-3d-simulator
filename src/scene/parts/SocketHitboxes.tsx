@@ -139,13 +139,19 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
     if (touchWiringBridge.activeTouchIds.size >= 2) return;
     e.stopPropagation();
 
+    const store = useSimulatorStore.getState();
     const picked =
       resolvePickedSocket(e, pairedSocketMap) ??
-      findNearestActiveSocket(e.point.x, e.point.z, TOUCH_SNAP_RADIUS);
+      findNearestActiveSocket(
+        e.point.x,
+        e.point.z,
+        TOUCH_SNAP_RADIUS,
+        store.pendingSocketId,
+        store.pendingSocketId ? SOCKET_MAP[store.pendingSocketId]?.nodeId : null
+      );
     if (!picked) return;
 
     touchWiringBridge.lastTouchHandledAt = performance.now();
-    const store = useSimulatorStore.getState();
 
     if (!store.pendingSocketId) {
       touchWiringBridge.activeTouchDragPointerId = e.pointerId;
@@ -155,7 +161,10 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
       if (store.soundEnabled) {
         playWirePlug();
       }
-    } else if (store.pendingSocketId === picked.id) {
+    } else if (
+      store.pendingSocketId === picked.id ||
+      SOCKET_MAP[store.pendingSocketId]?.nodeId === picked.nodeId
+    ) {
       store.cancelWiring();
       store.setHoveredSocketId(null);
     } else {

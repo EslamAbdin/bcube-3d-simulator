@@ -378,7 +378,11 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   addWire: (fromSocketId, toSocketId, color) => {
     const s = get();
     if (fromSocketId === toSocketId) return false;
-    if (!SOCKET_MAP[fromSocketId] || !SOCKET_MAP[toSocketId]) return false;
+    const fromSock = SOCKET_MAP[fromSocketId];
+    const toSock = SOCKET_MAP[toSocketId];
+    if (!fromSock || !toSock) return false;
+    // Safeguard: dual-hole pairs on the same pin are already shorted internally
+    if (fromSock.nodeId === toSock.nodeId) return false;
 
     const exists = s.wires.some(
       (w) =>
@@ -444,16 +448,21 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   completeWiring: (targetSocketId) => {
     const s = get();
     const fromId = s.pendingSocketId;
-    if (!fromId || !SOCKET_MAP[targetSocketId]) {
+    const fromSock = fromId ? SOCKET_MAP[fromId] : undefined;
+    const toSock = SOCKET_MAP[targetSocketId];
+    if (!fromId || !fromSock || !toSock) {
       set({ pendingSocketId: null });
       return { ok: false, reason: 'invalid' };
     }
-    if (fromId === targetSocketId) {
+    if (fromId === targetSocketId || fromSock.nodeId === toSock.nodeId) {
       set({
         pendingSocketId: null,
         statusToast: {
           id: toastCounter++,
-          message: 'Cannot connect a socket to itself.',
+          message:
+            fromId === targetSocketId
+              ? 'Cannot connect a socket to itself.'
+              : 'Both holes belong to the same pin (already connected internally).',
           kind: 'warning',
         },
       });

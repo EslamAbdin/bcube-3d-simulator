@@ -5,7 +5,7 @@
 
 import { ALL_SOCKETS, type SocketSpec } from '../schema/boardSchema';
 
-export const TOUCH_SNAP_RADIUS = 0.55;
+export const TOUCH_SNAP_RADIUS = 0.3;
 export const TOUCH_CLICK_GUARD_MS = 450;
 
 export const touchWiringBridge: {
@@ -28,13 +28,15 @@ export function findNearestActiveSocket(
   x: number,
   z: number,
   maxRadius = TOUCH_SNAP_RADIUS,
-  excludeSocketId?: string | null
+  excludeSocketId?: string | null,
+  excludeNodeId?: string | null
 ): SocketSpec | null {
   let best: SocketSpec | null = null;
   let bestDistSq = maxRadius * maxRadius;
 
   for (const sock of ALL_SOCKETS) {
     if (excludeSocketId && sock.id === excludeSocketId) continue;
+    if (excludeNodeId && sock.nodeId === excludeNodeId) continue;
     const dx = sock.position.x - x;
     const dz = sock.position.z - z;
     const dSq = dx * dx + dz * dz;

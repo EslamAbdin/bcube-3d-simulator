@@ -71,6 +71,24 @@ const SeatedWire = memo(function SeatedWire({
 }) {
   const [hovered, setHovered] = useState(false);
   const tubeMatRef = useRef<THREE.MeshStandardMaterial>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const pressStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const longPressFiredRef = useRef(false);
+  const lastTapTimeRef = useRef(0);
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current !== null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    pressStartPosRef.current = null;
+  };
+
+  useEffect(() => {
+    return () => {
+      clearLongPress();
+    };
+  }, []);
 
   const signalFlowEnabled = useSimulatorStore((s) => s.signalFlowEnabled);
   const teachingMode = useSimulatorStore((s) => s.teachingMode);
@@ -219,6 +237,23 @@ const SeatedWire = memo(function SeatedWire({
 
   if (!fromSock || !toSock || !tubeGeo) return null;
 
+  const disconnectWire = () => {
+    clearLongPress();
+    const store = useSimulatorStore.getState();
+    store.removeWire(wire.id);
+    if (store.soundEnabled) {
+      playWireUnplug();
+    }
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(25);
+      } catch {
+        // ignore vibration permission errors
+      }
+    }
+    store.showToast('Disconnected wire', 'info');
+  };
+
   const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
     if (e.pointerType === 'touch') return;
     e.stopPropagation();
@@ -227,27 +262,66 @@ const SeatedWire = memo(function SeatedWire({
   };
 
   const handlePointerOut = (e: ThreeEvent<PointerEvent>) => {
+    clearLongPress();
     if (e.pointerType === 'touch') return;
     e.stopPropagation();
     setHovered(false);
     document.body.style.cursor = 'auto';
   };
 
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (e.pointerType !== 'touch' && e.button !== 0) return;
+    if (e.pointerType === 'touch' && touchWiringBridge.activeTouchIds.size > 1) return;
+    e.stopPropagation();
+
+    clearLongPress();
+    longPressFiredRef.current = false;
+    pressStartPosRef.current = { x: e.clientX, y: e.clientY };
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressFiredRef.current = true;
+      disconnectWire();
+    }, 550);
+  };
+
+  const handlePointerMoveWire = (e: ThreeEvent<PointerEvent>) => {
+    if (!pressStartPosRef.current) return;
+    const dist = Math.hypot(
+      e.clientX - pressStartPosRef.current.x,
+      e.clientY - pressStartPosRef.current.y
+    );
+    if (dist > 10) {
+      clearLongPress();
+    }
+  };
+
+  const handlePointerUpWire = () => {
+    clearLongPress();
+  };
+
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    clearLongPress();
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false;
+      e.stopPropagation();
+      return;
+    }
     if (e.delta > 8) return;
     e.stopPropagation();
-    const store = useSimulatorStore.getState();
-    store.selectWire(isSelected ? null : wire.id);
+
+    const now = performance.now();
+    if (now - lastTapTimeRef.current < 340) {
+      lastTapTimeRef.current = 0;
+      disconnectWire();
+      return;
+    }
+    lastTapTimeRef.current = now;
+    useSimulatorStore.getState().selectWire(isSelected ? null : wire.id);
   };
 
   const handleContextMenu = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
     e.nativeEvent.preventDefault();
-    const store = useSimulatorStore.getState();
-    store.removeWire(wire.id);
-    if (store.soundEnabled) {
-      playWireUnplug();
-    }
+    disconnectWire();
   };
 
   return (
@@ -258,6 +332,10 @@ const SeatedWire = memo(function SeatedWire({
         castShadow={isHighPerf}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMoveWire}
+        onPointerUp={handlePointerUpWire}
+        onPointerCancel={handlePointerUpWire}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
@@ -354,7 +432,15 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
       }
 
       const snapTarget = store.hoveredSocketId;
-      if (snapTarget && snapTarget !== pendingSocketId) {
+      const snapSock = snapTarget ? SOCKET_MAP[snapTarget] : undefined;
+      if (
+        wasDragged &&
+        snapTarget &&
+        snapTarget !== pendingSocketId &&
+        snapSock &&
+        originSock &&
+        snapSock.nodeId !== originSock.nodeId
+      ) {
         const res = store.completeWiring(snapTarget);
         store.setHoveredSocketId(null);
         if (res.ok && store.soundEnabled) {
@@ -460,14 +546,15 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
               e.point.x - originSock.position.x,
               e.point.z - originSock.position.z
             );
-            if (distFromOrigin > 0.26) {
+            if (distFromOrigin > 0.35) {
               touchWiringBridge.touchDragMoved = true;
             }
             const nearest = findNearestActiveSocket(
               e.point.x,
               e.point.z,
               TOUCH_SNAP_RADIUS,
-              pendingSocketId
+              pendingSocketId,
+              originSock.nodeId
             );
             const store = useSimulatorStore.getState();
             const nextId = nearest ? nearest.id : null;
