@@ -8,12 +8,20 @@ import { ALL_SOCKETS, type SocketSpec } from '../schema/boardSchema';
 export const TOUCH_SNAP_RADIUS = 0.55;
 export const TOUCH_CLICK_GUARD_MS = 450;
 
-export const touchWiringBridge = {
+export const touchWiringBridge: {
+  activeTouchIds: Set<number>;
+  activeTouchDragPointerId: number | null;
+  touchOriginSocketId: string | null;
+  touchDragMoved: boolean;
+  lastTouchHandledAt: number;
+  pointerClientPos: { x: number; y: number } | null;
+} = {
   activeTouchIds: new Set<number>(),
-  activeTouchDragPointerId: null as number | null,
-  touchOriginSocketId: null as string | null,
+  activeTouchDragPointerId: null,
+  touchOriginSocketId: null,
   touchDragMoved: false,
   lastTouchHandledAt: 0,
+  pointerClientPos: null,
 };
 
 export function findNearestActiveSocket(

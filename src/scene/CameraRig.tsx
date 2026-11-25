@@ -8,6 +8,22 @@ import { touchWiringBridge } from './touchWiringBridge';
 
 const PRESET_3D_TARGET = new THREE.Vector3(0, 0, 0.5);
 const PRESET_2D_TARGET = new THREE.Vector3(0, 0, 0);
+const EDGE_CAM_RIGHT = new THREE.Vector3();
+const EDGE_CAM_UP = new THREE.Vector3();
+
+function computeEdgeAxis(localCoord: number, span: number, margin: number): number {
+  if (margin <= 1 || span <= 0) return 0;
+  let raw = 0;
+  if (localCoord < margin) {
+    raw = -(margin - localCoord) / margin;
+  } else if (localCoord > span - margin) {
+    raw = (localCoord - (span - margin)) / margin;
+  } else {
+    return 0;
+  }
+  const clamped = Math.max(-1, Math.min(1, raw));
+  return clamped * Math.abs(clamped);
+}
 
 function getAspectScale(width: number, height: number): number {
   const aspect = width / Math.max(height, 1);
@@ -98,6 +114,35 @@ export function CameraRig() {
     };
   }, []);
 
+  // Track pointer screen coordinates during active wiring for smooth camera edge-panning
+  useEffect(() => {
+    const clearPointer = () => {
+      touchWiringBridge.pointerClientPos = null;
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      const pending = useSimulatorStore.getState().pendingSocketId;
+      if (pending && touchWiringBridge.activeTouchIds.size < 2) {
+        touchWiringBridge.pointerClientPos = { x: e.clientX, y: e.clientY };
+        invalidate();
+      } else {
+        touchWiringBridge.pointerClientPos = null;
+      }
+    };
+
+    window.addEventListener('pointermove', onPointerMove, true);
+    window.addEventListener('pointerup', clearPointer, true);
+    window.addEventListener('pointercancel', clearPointer, true);
+    document.addEventListener('mouseleave', clearPointer);
+    return () => {
+      window.removeEventListener('pointermove', onPointerMove, true);
+      window.removeEventListener('pointerup', clearPointer, true);
+      window.removeEventListener('pointercancel', clearPointer, true);
+      document.removeEventListener('mouseleave', clearPointer);
+      touchWiringBridge.pointerClientPos = null;
+    };
+  }, [invalidate]);
+
   // Dev inspection helpers for deterministic automated camera & touch verification
   useEffect(() => {
     if (!import.meta.env.DEV || typeof window === 'undefined') return;
@@ -155,22 +200,76 @@ export function CameraRig() {
   }, [setCameraMode, triggerCameraReset]);
 
   useFrame((_, delta) => {
-    if (!isTransitioningRef.current || !controlsRef.current) return;
-
-    const alpha = 1 - Math.exp(-10 * Math.min(delta, 0.18));
-    camera.position.lerp(goalPosRef.current, alpha);
-    controlsRef.current.target.lerp(goalTargetRef.current, alpha);
-    controlsRef.current.update();
-
-    const posDist = camera.position.distanceTo(goalPosRef.current);
-    const tgtDist = controlsRef.current.target.distanceTo(goalTargetRef.current);
-    if (posDist < 0.04 && tgtDist < 0.04) {
-      camera.position.copy(goalPosRef.current);
-      controlsRef.current.target.copy(goalTargetRef.current);
+    if (isTransitioningRef.current && controlsRef.current) {
+      const alpha = 1 - Math.exp(-10 * Math.min(delta, 0.18));
+      camera.position.lerp(goalPosRef.current, alpha);
+      controlsRef.current.target.lerp(goalTargetRef.current, alpha);
       controlsRef.current.update();
-      isTransitioningRef.current = false;
-    } else {
-      invalidate();
+
+      const posDist = camera.position.distanceTo(goalPosRef.current);
+      const tgtDist = controlsRef.current.target.distanceTo(goalTargetRef.current);
+      if (posDist < 0.04 && tgtDist < 0.04) {
+        camera.position.copy(goalPosRef.current);
+        controlsRef.current.target.copy(goalTargetRef.current);
+        controlsRef.current.update();
+        isTransitioningRef.current = false;
+      } else {
+        invalidate();
+      }
+    }
+
+    // Smooth camera edge-panning while dragging or placing a wire near viewport edges
+    const ptr = touchWiringBridge.pointerClientPos;
+    if (
+      ptr &&
+      controlsRef.current &&
+      useSimulatorStore.getState().pendingSocketId &&
+      touchWiringBridge.activeTouchIds.size < 2
+    ) {
+      const rect = gl.domElement.getBoundingClientRect();
+      const marginX = Math.min(96, rect.width * 0.16);
+      const marginY = Math.min(96, rect.height * 0.16);
+      const lx = ptr.x - rect.left;
+      const ly = ptr.y - rect.top;
+      const edgeX = computeEdgeAxis(lx, rect.width, marginX);
+      const edgeY = computeEdgeAxis(ly, rect.height, marginY);
+
+      if (edgeX !== 0 || edgeY !== 0) {
+        EDGE_CAM_RIGHT.setFromMatrixColumn(camera.matrixWorld, 0);
+        EDGE_CAM_RIGHT.y = 0;
+        if (EDGE_CAM_RIGHT.lengthSq() > 1e-6) EDGE_CAM_RIGHT.normalize();
+        else EDGE_CAM_RIGHT.set(1, 0, 0);
+
+        EDGE_CAM_UP.setFromMatrixColumn(camera.matrixWorld, 1);
+        EDGE_CAM_UP.y = 0;
+        if (EDGE_CAM_UP.lengthSq() > 1e-6) EDGE_CAM_UP.normalize();
+        else EDGE_CAM_UP.set(0, 0, -1);
+
+        // Screen down on XZ plane is -EDGE_CAM_UP
+        const screenDownX = -EDGE_CAM_UP.x;
+        const screenDownZ = -EDGE_CAM_UP.z;
+
+        const target = controlsRef.current.target;
+        const camDist = camera.position.distanceTo(target);
+        const step = Math.max(10, camDist * 0.55) * Math.min(delta, 0.05);
+
+        const rawDx = (EDGE_CAM_RIGHT.x * edgeX + screenDownX * edgeY) * step;
+        const rawDz = (EDGE_CAM_RIGHT.z * edgeX + screenDownZ * edgeY) * step;
+
+        const nextX = THREE.MathUtils.clamp(target.x + rawDx, -23, 23);
+        const nextZ = THREE.MathUtils.clamp(target.z + rawDz, -15.5, 15.5);
+        const appliedDx = nextX - target.x;
+        const appliedDz = nextZ - target.z;
+
+        if (Math.abs(appliedDx) > 1e-5 || Math.abs(appliedDz) > 1e-5) {
+          target.x = nextX;
+          target.z = nextZ;
+          camera.position.x += appliedDx;
+          camera.position.z += appliedDz;
+          controlsRef.current.update();
+          invalidate();
+        }
+      }
     }
   });
 
