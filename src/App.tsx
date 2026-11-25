@@ -6,6 +6,7 @@ import { LabDrawer } from './components/LabDrawer';
 import { StatusBar } from './components/StatusBar';
 import { TeachingPanel } from './components/TeachingPanel';
 import { TopHud } from './components/TopHud';
+import { WireWarningModal } from './components/WireWarningModal';
 import { CameraRig } from './scene/CameraRig';
 import { LabEnvironment } from './scene/LabEnvironment';
 import { ActiveIOModules } from './scene/parts/ActiveIOModules';
@@ -93,6 +94,7 @@ export function App() {
       <StatusBar />
       <HelpModal />
       <IcInspectorModal />
+      <WireWarningModal />
     </div>
   );
 }

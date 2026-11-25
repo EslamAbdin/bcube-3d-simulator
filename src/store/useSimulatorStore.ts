@@ -128,6 +128,13 @@ export interface StatusToast {
   kind: 'info' | 'warning' | 'success';
 }
 
+export interface PendingWireWarning {
+  fromSocketId: string;
+  toSocketId: string;
+  color: string;
+  diagnostics: WiringDiagnostic[];
+}
+
 interface CompactHashCircuit {
   v: number;
   s?: string[];
@@ -163,6 +170,7 @@ interface SimulatorState {
   hoveredIcType: ActiveGateModuleType | null;
   errorWarningsEnabled: boolean;
   highlightedDiagnosticId: string | null;
+  pendingWireWarning: PendingWireWarning | null;
   touchTwoFingerMode: TouchTwoFingerMode;
 
   // Derived simulation state
@@ -181,7 +189,11 @@ interface SimulatorState {
   clearWires: () => void;
   startWiring: (socketId: string) => void;
   cancelWiring: () => void;
-  completeWiring: (targetSocketId: string) => { ok: boolean; reason?: 'self' | 'duplicate' | 'invalid' };
+  completeWiring: (
+    targetSocketId: string
+  ) => { ok: boolean; reason?: 'self' | 'duplicate' | 'invalid' | 'warning' };
+  confirmPendingWireWarning: () => boolean;
+  dismissPendingWireWarning: () => void;
   selectWire: (wireId: string | null) => void;
   undoLastWire: () => boolean;
   setActiveWireColor: (hex: string) => void;
@@ -337,6 +349,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   hoveredIcType: null,
   errorWarningsEnabled: readInitialErcEnabled(),
   highlightedDiagnosticId: null,
+  pendingWireWarning: null,
   touchTwoFingerMode: 'orbit',
   ...initialDerived,
 
@@ -430,13 +443,14 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       selectedWireId: null,
       activePresetInfo: null,
       highlightedDiagnosticId: null,
+      pendingWireWarning: null,
       ...computeDerived(s.switches, s.buttons, [], s.ttlFloatingIsHigh),
     });
   },
 
   startWiring: (socketId) => {
     if (!SOCKET_MAP[socketId]) return;
-    set({ pendingSocketId: socketId, selectedWireId: null });
+    set({ pendingSocketId: socketId, selectedWireId: null, pendingWireWarning: null });
   },
 
   cancelWiring: () => {
@@ -485,10 +499,56 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       return { ok: false, reason: 'duplicate' };
     }
 
+    if (s.errorWarningsEnabled) {
+      const candidateWire: WireSpec = {
+        id: '__candidate__',
+        fromSocketId: fromId,
+        toSocketId: targetSocketId,
+        color: s.activeWireColor,
+      };
+      const candidateWires = [...s.wires, candidateWire];
+      const simRes = runSimulation({
+        switches: s.switches,
+        buttons: s.buttons,
+        wires: candidateWires,
+        ttlFloatingIsHigh: s.ttlFloatingIsHigh,
+      });
+      const blocking = analyzeWiringErrors(candidateWires, simRes, {
+        ttlFloatingIsHigh: s.ttlFloatingIsHigh,
+      }).filter(
+        (d) => d.affectedWireIds.includes('__candidate__') && d.code !== 'UNCONNECTED_GATE_INPUT'
+      );
+
+      if (blocking.length > 0) {
+        set({
+          pendingSocketId: null,
+          selectedWireId: null,
+          pendingWireWarning: {
+            fromSocketId: fromId,
+            toSocketId: targetSocketId,
+            color: s.activeWireColor,
+            diagnostics: blocking,
+          },
+        });
+        return { ok: false, reason: 'warning' };
+      }
+    }
+
     const ok = s.addWire(fromId, targetSocketId);
     set({ pendingSocketId: null, selectedWireId: null });
     return ok ? { ok: true } : { ok: false, reason: 'invalid' };
   },
+
+  confirmPendingWireWarning: () => {
+    const s = get();
+    const pending = s.pendingWireWarning;
+    if (!pending) return false;
+    const ok = s.addWire(pending.fromSocketId, pending.toSocketId, pending.color);
+    set({ pendingWireWarning: null, pendingSocketId: null, selectedWireId: null });
+    return ok;
+  },
+
+  dismissPendingWireWarning: () => set({ pendingWireWarning: null }),
 
   selectWire: (wireId) =>
     set((s) => ({
@@ -615,6 +675,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       return {
         errorWarningsEnabled: next,
         highlightedDiagnosticId: next ? s.highlightedDiagnosticId : null,
+        pendingWireWarning: next ? s.pendingWireWarning : null,
       };
     }),
 
@@ -643,6 +704,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       pendingSocketId: null,
       selectedWireId: null,
       highlightedDiagnosticId: null,
+      pendingWireWarning: null,
       activePresetInfo: info,
       ...computeDerived(switches, buttons, wires, s.ttlFloatingIsHigh),
     });
@@ -676,6 +738,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       pendingSocketId: null,
       selectedWireId: null,
       highlightedDiagnosticId: null,
+      pendingWireWarning: null,
       activePresetInfo: {
         id: preset.id,
         name: preset.name,
@@ -781,6 +844,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
         pendingSocketId: null,
         selectedWireId: null,
         highlightedDiagnosticId: null,
+        pendingWireWarning: null,
         activePresetInfo: null,
         statusToast: {
           id: toastCounter++,
@@ -834,6 +898,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
         pendingSocketId: null,
         selectedWireId: null,
         highlightedDiagnosticId: null,
+        pendingWireWarning: null,
         activePresetInfo: null,
         ...computeDerived(switches, buttons, validWires, s.ttlFloatingIsHigh),
       });
@@ -855,6 +920,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       pendingSocketId: null,
       selectedWireId: null,
       highlightedDiagnosticId: null,
+      pendingWireWarning: null,
       activePresetInfo: null,
       ...computeDerived(switches, buttons, [], s.ttlFloatingIsHigh),
     });

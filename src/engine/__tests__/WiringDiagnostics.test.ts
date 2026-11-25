@@ -130,4 +130,59 @@ describe('wiringDiagnostics (ERC)', () => {
     expect(useSimulatorStore.getState().wires).toHaveLength(0);
     expect(useSimulatorStore.getState().pendingSocketId).toBeNull();
   });
+
+  it('requires explicit ignore confirmation before connecting illogical wires when ERC is ON', () => {
+    const store = useSimulatorStore.getState();
+    store.resetBoard();
+    if (!store.errorWarningsEnabled) store.toggleErrorWarnings();
+
+    // Normal 1st wire to a 2-input gate connects immediately without nagging
+    store.startWiring('SLIDE_SWITCH:SW1:A');
+    const first = store.completeWiring('IC_7408:PIN1:A');
+    expect(first.ok).toBe(true);
+    expect(useSimulatorStore.getState().pendingWireWarning).toBeNull();
+    expect(useSimulatorStore.getState().wires).toHaveLength(1);
+
+    // Connecting a 2nd switch onto the same input net triggers pre-connection warning
+    store.startWiring('SLIDE_SWITCH:SW2:A');
+    const blocked = store.completeWiring('IC_7408:PIN1:B');
+    expect(blocked).toEqual({ ok: false, reason: 'warning' });
+    expect(useSimulatorStore.getState().wires).toHaveLength(1);
+    expect(useSimulatorStore.getState().pendingWireWarning?.diagnostics[0].code).toBe(
+      'MULTIPLE_SWITCHES_ON_NET'
+    );
+
+    // Cancel keeps wire disconnected
+    store.dismissPendingWireWarning();
+    expect(useSimulatorStore.getState().pendingWireWarning).toBeNull();
+    expect(useSimulatorStore.getState().wires).toHaveLength(1);
+
+    // Re-attempt then press Ignore & Connect -> wire connects
+    store.startWiring('SLIDE_SWITCH:SW2:A');
+    store.completeWiring('IC_7408:PIN1:B');
+    const confirmed = store.confirmPendingWireWarning();
+    expect(confirmed).toBe(true);
+    expect(useSimulatorStore.getState().pendingWireWarning).toBeNull();
+    expect(useSimulatorStore.getState().wires).toHaveLength(2);
+
+    // Also verifies combinational feedback loop triggers warning before connecting
+    store.startWiring('IC_7404:PIN2:A');
+    const loopRes = store.completeWiring('IC_7404:PIN1:A');
+    expect(loopRes).toEqual({ ok: false, reason: 'warning' });
+    expect(useSimulatorStore.getState().pendingWireWarning?.diagnostics[0].code).toBe(
+      'COMBINATIONAL_FEEDBACK_LOOP'
+    );
+    store.dismissPendingWireWarning();
+
+    // Turning ERC OFF skips the warning gate
+    store.toggleErrorWarnings();
+    store.startWiring('IC_7404:PIN2:A');
+    const directRes = store.completeWiring('IC_7404:PIN1:A');
+    expect(directRes.ok).toBe(true);
+    expect(useSimulatorStore.getState().wires).toHaveLength(3);
+
+    // Restore ERC ON default
+    store.toggleErrorWarnings();
+    store.resetBoard();
+  });
 });
