@@ -291,7 +291,7 @@ export function getGateModuleLayout(mod: BoardModuleSpec): GateModuleLayout {
     };
   }
   return {
-    surfaceY: 0.008,
+    surfaceY: 0.025,
     headerTopY: BOARD_DIMENSIONS.baseBoardHeaderTopY,
     icLocalZ: -1.32,
     icWidth: 0.42,

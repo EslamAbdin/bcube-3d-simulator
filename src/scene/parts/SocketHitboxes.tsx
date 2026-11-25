@@ -8,6 +8,12 @@ import {
 } from '../../schema/boardSchema';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { playWirePlug } from '../../utils/soundEffects';
+import {
+  TOUCH_CLICK_GUARD_MS,
+  TOUCH_SNAP_RADIUS,
+  findNearestActiveSocket,
+  touchWiringBridge,
+} from '../touchWiringBridge';
 
 function buildPairedSocketMap(): Record<string, SocketSpec> {
   const byNode = new Map<string, SocketSpec[]>();
@@ -60,8 +66,9 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
 
   // Radius >= 0.145 ensures effortless clicking on both 3D and 2D views
   const colliderGeo = useMemo(() => new THREE.CylinderGeometry(0.145, 0.145, 0.08, 12), []);
+  // colorWrite: false + depthWrite: false avoids all depth-buffer occlusion/flickering artifacts
   const colliderMat = useMemo(
-    () => new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+    () => new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }),
     []
   );
 
@@ -104,7 +111,8 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
     }
   });
 
-  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
+  const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
+    if (e.pointerType === 'touch') return;
     e.stopPropagation();
     const picked = resolvePickedSocket(e, pairedSocketMap);
     if (!picked) return;
@@ -117,6 +125,7 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
   };
 
   const handlePointerOut = (e: ThreeEvent<PointerEvent>) => {
+    if (e.pointerType === 'touch') return;
     e.stopPropagation();
     const store = useSimulatorStore.getState();
     if (store.hoveredSocketId !== null) {
@@ -125,7 +134,44 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
     document.body.style.cursor = 'auto';
   };
 
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (e.pointerType !== 'touch') return;
+    if (touchWiringBridge.activeTouchIds.size >= 2) return;
+    e.stopPropagation();
+
+    const picked =
+      resolvePickedSocket(e, pairedSocketMap) ??
+      findNearestActiveSocket(e.point.x, e.point.z, TOUCH_SNAP_RADIUS);
+    if (!picked) return;
+
+    touchWiringBridge.lastTouchHandledAt = performance.now();
+    const store = useSimulatorStore.getState();
+
+    if (!store.pendingSocketId) {
+      touchWiringBridge.activeTouchDragPointerId = e.pointerId;
+      touchWiringBridge.touchOriginSocketId = picked.id;
+      touchWiringBridge.touchDragMoved = false;
+      store.startWiring(picked.id);
+      if (store.soundEnabled) {
+        playWirePlug();
+      }
+    } else if (store.pendingSocketId === picked.id) {
+      store.cancelWiring();
+      store.setHoveredSocketId(null);
+    } else {
+      const res = store.completeWiring(picked.id);
+      store.setHoveredSocketId(null);
+      if (res.ok && store.soundEnabled) {
+        playWirePlug();
+      }
+    }
+  };
+
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    if (performance.now() - touchWiringBridge.lastTouchHandledAt < TOUCH_CLICK_GUARD_MS) {
+      e.stopPropagation();
+      return;
+    }
     // Guard against completing/starting wires after camera drag/orbit
     if (e.delta > 8) return;
     e.stopPropagation();
@@ -165,9 +211,10 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
         ref={colliderRef}
         args={[colliderGeo, colliderMat, ALL_SOCKETS.length]}
         frustumCulled={false}
-        onPointerOver={handlePointerMove}
-        onPointerMove={handlePointerMove}
+        onPointerOver={handlePointerOver}
+        onPointerMove={handlePointerOver}
         onPointerOut={handlePointerOut}
+        onPointerDown={handlePointerDown}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       />
@@ -176,32 +223,62 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
       {originSocket && (
         <mesh
           ref={originRingRef}
-          position={[originSocket.position.x, originSocket.position.y + 0.011, originSocket.position.z]}
+          position={[originSocket.position.x, originSocket.position.y + 0.028, originSocket.position.z]}
           rotation={[-Math.PI / 2, 0, 0]}
+          renderOrder={2}
         >
           <ringGeometry args={[0.088, 0.16, 24]} />
-          <meshBasicMaterial color="#facc15" toneMapped={false} transparent opacity={0.96} />
+          <meshBasicMaterial
+            color="#facc15"
+            toneMapped={false}
+            transparent
+            opacity={0.96}
+            depthWrite={false}
+            polygonOffset
+            polygonOffsetFactor={-2}
+            polygonOffsetUnits={-2}
+          />
         </mesh>
       )}
 
       {hoveredPrimary && hoveredPrimary.id !== pendingSocketId && (
         <mesh
           ref={primaryRingRef}
-          position={[hoveredPrimary.position.x, hoveredPrimary.position.y + 0.008, hoveredPrimary.position.z]}
+          position={[hoveredPrimary.position.x, hoveredPrimary.position.y + 0.026, hoveredPrimary.position.z]}
           rotation={[-Math.PI / 2, 0, 0]}
+          renderOrder={2}
         >
           <ringGeometry args={[0.082, 0.142, 24]} />
-          <meshBasicMaterial color="#38bdf8" toneMapped={false} transparent opacity={0.95} />
+          <meshBasicMaterial
+            color="#38bdf8"
+            toneMapped={false}
+            transparent
+            opacity={0.95}
+            depthWrite={false}
+            polygonOffset
+            polygonOffsetFactor={-2}
+            polygonOffsetUnits={-2}
+          />
         </mesh>
       )}
 
       {hoveredPaired && hoveredPaired.id !== pendingSocketId && (
         <mesh
-          position={[hoveredPaired.position.x, hoveredPaired.position.y + 0.007, hoveredPaired.position.z]}
+          position={[hoveredPaired.position.x, hoveredPaired.position.y + 0.025, hoveredPaired.position.z]}
           rotation={[-Math.PI / 2, 0, 0]}
+          renderOrder={2}
         >
           <ringGeometry args={[0.078, 0.124, 24]} />
-          <meshBasicMaterial color="#7dd3fc" toneMapped={false} transparent opacity={0.62} />
+          <meshBasicMaterial
+            color="#7dd3fc"
+            toneMapped={false}
+            transparent
+            opacity={0.62}
+            depthWrite={false}
+            polygonOffset
+            polygonOffsetFactor={-2}
+            polygonOffsetUnits={-2}
+          />
         </mesh>
       )}
     </group>
@@ -209,7 +286,7 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
 });
 
 /**
- * Invisible active-socket raycast hitboxes (hover + click-to-wire).
+ * Invisible active-socket raycast hitboxes (hover, mouse click & 1-finger touch wiring).
  */
 export const SocketHitboxes = memo(function SocketHitboxes() {
   return (

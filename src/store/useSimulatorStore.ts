@@ -17,14 +17,41 @@ import {
   type WireSpec,
 } from '../engine/LogicEngine';
 import type { SignalLevel } from '../engine/gateEvaluators';
+import {
+  analyzeWiringErrors,
+  type WiringDiagnostic,
+} from '../engine/wiringDiagnostics';
 
 export type CameraMode = '3d' | '2d';
 export type DrawerTab = 'truth-table' | 'timing' | 'challenges' | null;
 export type PerformanceMode = 'high' | 'eco';
 export type TeachingLanguage = 'en' | 'ar';
+export type TouchTwoFingerMode = 'orbit' | 'pan';
 
 const PERF_MODE_STORAGE_KEY = 'bcube_perf_mode_v1';
 const TEACHING_LANG_STORAGE_KEY = 'bcube_teaching_lang_v1';
+const ERC_ENABLED_STORAGE_KEY = 'bcube_erc_enabled_v1';
+
+function readInitialErcEnabled(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    const saved = window.localStorage.getItem(ERC_ENABLED_STORAGE_KEY);
+    if (saved === 'false') return false;
+    if (saved === 'true') return true;
+    return true;
+  } catch {
+    return true;
+  }
+}
+
+function persistErcEnabled(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(ERC_ENABLED_STORAGE_KEY, String(enabled));
+  } catch {
+    // Ignore storage quota/privacy mode failures
+  }
+}
 
 function readInitialTeachingLang(): TeachingLanguage {
   if (typeof window === 'undefined') return 'en';
@@ -134,12 +161,16 @@ interface SimulatorState {
   teachingLang: TeachingLanguage;
   inspectedIcType: ActiveGateModuleType | null;
   hoveredIcType: ActiveGateModuleType | null;
+  errorWarningsEnabled: boolean;
+  highlightedDiagnosticId: string | null;
+  touchTwoFingerMode: TouchTwoFingerMode;
 
   // Derived simulation state
   netStates: Record<string, SignalLevel>;
   socketStates: Record<string, SignalLevel>;
   ledStates: Record<string, LedOutputState>;
   conflicts: ConflictInfo[];
+  wiringDiagnostics: WiringDiagnostic[];
 
   // Actions
   toggleSlideSwitch: (switchId: string) => void;
@@ -174,6 +205,9 @@ interface SimulatorState {
   setTeachingLang: (lang: TeachingLanguage) => void;
   setInspectedIcType: (icType: ActiveGateModuleType | null) => void;
   setHoveredIcType: (icType: ActiveGateModuleType | null) => void;
+  toggleErrorWarnings: () => void;
+  setHighlightedDiagnosticId: (diagId: string | null) => void;
+  toggleTouchTwoFingerMode: () => void;
   loadTeachingDemo: (
     wires: WireSpec[],
     initialSwitches?: Record<string, boolean>,
@@ -205,11 +239,13 @@ function computeDerived(
   ttlFloatingIsHigh: boolean
 ) {
   const res = runSimulation({ switches, buttons, wires, ttlFloatingIsHigh });
+  const wiringDiagnostics = analyzeWiringErrors(wires, res, { ttlFloatingIsHigh });
   return {
     netStates: res.netStates,
     socketStates: res.socketStates,
     ledStates: res.ledStates,
     conflicts: res.conflicts,
+    wiringDiagnostics,
   };
 }
 
@@ -299,6 +335,9 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   teachingLang: readInitialTeachingLang(),
   inspectedIcType: null,
   hoveredIcType: null,
+  errorWarningsEnabled: readInitialErcEnabled(),
+  highlightedDiagnosticId: null,
+  touchTwoFingerMode: 'orbit',
   ...initialDerived,
 
   toggleSlideSwitch: (switchId) => {
@@ -361,6 +400,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       wires,
       wireColorIndex: s.autoCycleWireColor ? nextColorIdx : s.wireColorIndex,
       activeWireColor: s.autoCycleWireColor ? WIRE_COLORS[nextColorIdx].hex : s.activeWireColor,
+      highlightedDiagnosticId: null,
       ...computeDerived(s.switches, s.buttons, wires, s.ttlFloatingIsHigh),
     });
     return true;
@@ -373,6 +413,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     set({
       wires,
       selectedWireId: s.selectedWireId === wireId ? null : s.selectedWireId,
+      highlightedDiagnosticId: null,
       ...computeDerived(s.switches, s.buttons, wires, s.ttlFloatingIsHigh),
     });
   },
@@ -384,6 +425,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       pendingSocketId: null,
       selectedWireId: null,
       activePresetInfo: null,
+      highlightedDiagnosticId: null,
       ...computeDerived(s.switches, s.buttons, [], s.ttlFloatingIsHigh),
     });
   },
@@ -453,6 +495,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     set({
       wires,
       selectedWireId: s.selectedWireId === removed.id ? null : s.selectedWireId,
+      highlightedDiagnosticId: null,
       ...computeDerived(s.switches, s.buttons, wires, s.ttlFloatingIsHigh),
     });
     return true;
@@ -556,6 +599,23 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   setInspectedIcType: (icType) => set({ inspectedIcType: icType }),
   setHoveredIcType: (icType) => set({ hoveredIcType: icType }),
 
+  toggleErrorWarnings: () =>
+    set((s) => {
+      const next = !s.errorWarningsEnabled;
+      persistErcEnabled(next);
+      return {
+        errorWarningsEnabled: next,
+        highlightedDiagnosticId: next ? s.highlightedDiagnosticId : null,
+      };
+    }),
+
+  setHighlightedDiagnosticId: (diagId) => set({ highlightedDiagnosticId: diagId }),
+
+  toggleTouchTwoFingerMode: () =>
+    set((s) => ({
+      touchTwoFingerMode: s.touchTwoFingerMode === 'orbit' ? 'pan' : 'orbit',
+    })),
+
   loadTeachingDemo: (rawWires, initialSwitches, info = null) => {
     const s = get();
     const switches = makeDefaultSwitches();
@@ -573,6 +633,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       wires,
       pendingSocketId: null,
       selectedWireId: null,
+      highlightedDiagnosticId: null,
       activePresetInfo: info,
       ...computeDerived(switches, buttons, wires, s.ttlFloatingIsHigh),
     });
@@ -605,6 +666,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       wires,
       pendingSocketId: null,
       selectedWireId: null,
+      highlightedDiagnosticId: null,
       activePresetInfo: {
         id: preset.id,
         name: preset.name,
@@ -709,6 +771,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
         wires,
         pendingSocketId: null,
         selectedWireId: null,
+        highlightedDiagnosticId: null,
         activePresetInfo: null,
         statusToast: {
           id: toastCounter++,
@@ -761,6 +824,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
         wires: validWires,
         pendingSocketId: null,
         selectedWireId: null,
+        highlightedDiagnosticId: null,
         activePresetInfo: null,
         ...computeDerived(switches, buttons, validWires, s.ttlFloatingIsHigh),
       });
@@ -781,6 +845,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
       wires: [],
       pendingSocketId: null,
       selectedWireId: null,
+      highlightedDiagnosticId: null,
       activePresetInfo: null,
       ...computeDerived(switches, buttons, [], s.ttlFloatingIsHigh),
     });

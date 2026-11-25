@@ -2,7 +2,9 @@ import { type ComponentRef, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
+import { SOCKET_MAP } from '../schema/boardSchema';
 import { useSimulatorStore } from '../store/useSimulatorStore';
+import { touchWiringBridge } from './touchWiringBridge';
 
 const PRESET_3D_TARGET = new THREE.Vector3(0, 0, 0.5);
 const PRESET_2D_TARGET = new THREE.Vector3(0, 0, 0);
@@ -16,17 +18,18 @@ function getAspectScale(width: number, height: number): number {
 
 /**
  * Dual Camera Controller ('3d' Free Orbit vs '2d' Overhead Wiring View).
- * Aspect-aware framing fits portrait phones & tablets cleanly; supports on-demand invalidation.
- * Keyboard shortcuts: V toggles view mode; R resets camera framing.
+ * Desktop keeps Left-drag Orbit/Pan; Touch uses strict 2-finger camera/zoom
+ * so 1-finger gestures are reserved exclusively for interacting & wiring.
  */
 export function CameraRig() {
   const controlsRef = useRef<ComponentRef<typeof OrbitControls>>(null);
-  const { camera, size, invalidate } = useThree();
+  const { camera, gl, size, invalidate } = useThree();
 
   const cameraMode = useSimulatorStore((s) => s.cameraMode);
   const setCameraMode = useSimulatorStore((s) => s.setCameraMode);
   const cameraResetCount = useSimulatorStore((s) => s.cameraResetCount);
   const triggerCameraReset = useSimulatorStore((s) => s.triggerCameraReset);
+  const touchTwoFingerMode = useSimulatorStore((s) => s.touchTwoFingerMode);
 
   const isTransitioningRef = useRef(false);
   const goalPosRef = useRef(new THREE.Vector3(0, 34, 35));
@@ -60,6 +63,70 @@ export function CameraRig() {
     isTransitioningRef.current = true;
     invalidate();
   }, [camera, cameraMode, cameraResetCount, aspectScale, invalidate]);
+
+  // Global touch pointer tracker: cancel any active drag wire if a 2nd finger lands
+  useEffect(() => {
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      touchWiringBridge.activeTouchIds.add(e.pointerId);
+      if (
+        touchWiringBridge.activeTouchIds.size >= 2 &&
+        touchWiringBridge.activeTouchDragPointerId !== null
+      ) {
+        touchWiringBridge.activeTouchDragPointerId = null;
+        touchWiringBridge.touchOriginSocketId = null;
+        touchWiringBridge.touchDragMoved = false;
+        const st = useSimulatorStore.getState();
+        st.cancelWiring();
+        st.setHoveredSocketId(null);
+      }
+    };
+
+    const onPointerEnd = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      touchWiringBridge.activeTouchIds.delete(e.pointerId);
+    };
+
+    window.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('pointerup', onPointerEnd, true);
+    window.addEventListener('pointercancel', onPointerEnd, true);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('pointerup', onPointerEnd, true);
+      window.removeEventListener('pointercancel', onPointerEnd, true);
+      touchWiringBridge.activeTouchIds.clear();
+    };
+  }, []);
+
+  // Dev inspection helpers for deterministic automated camera & touch verification
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') return;
+    const win = window as unknown as Record<string, unknown>;
+    win.__bcubeGetCameraState = () => ({
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      target: controlsRef.current
+        ? [
+            controlsRef.current.target.x,
+            controlsRef.current.target.y,
+            controlsRef.current.target.z,
+          ]
+        : [0, 0, 0],
+    });
+    win.__bcubeProjectSocket = (socketId: string) => {
+      const sock = SOCKET_MAP[socketId];
+      if (!sock) return null;
+      const rect = gl.domElement.getBoundingClientRect();
+      const v = new THREE.Vector3(sock.position.x, sock.position.y, sock.position.z).project(camera);
+      return {
+        x: rect.left + ((v.x + 1) / 2) * rect.width,
+        y: rect.top + ((-v.y + 1) / 2) * rect.height,
+      };
+    };
+    return () => {
+      delete win.__bcubeGetCameraState;
+      delete win.__bcubeProjectSocket;
+    };
+  }, [camera, gl]);
 
   // Global keyboard shortcuts: V (toggle 3D/2D), R (reset framing)
   useEffect(() => {
@@ -116,12 +183,16 @@ export function CameraRig() {
     [cameraMode]
   );
 
+  // Strict 2-finger camera controls on touch devices (1-finger reserved for wiring/switches)
   const touches = useMemo(
     () => ({
-      ONE: cameraMode === '2d' ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE,
-      TWO: THREE.TOUCH.DOLLY_PAN,
+      ONE: undefined as unknown as THREE.TOUCH,
+      TWO:
+        cameraMode === '2d' || touchTwoFingerMode === 'pan'
+          ? THREE.TOUCH.DOLLY_PAN
+          : THREE.TOUCH.DOLLY_ROTATE,
     }),
-    [cameraMode]
+    [cameraMode, touchTwoFingerMode]
   );
 
   return (

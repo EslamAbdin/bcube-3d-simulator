@@ -40,10 +40,13 @@ export function App() {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-950 select-none">
-      <div className="h-full w-full touch-none" onContextMenu={(e) => e.preventDefault()}>
+      <div
+        className="h-full w-full touch-none select-none"
+        onContextMenu={(e) => e.preventDefault()}
+      >
         <Canvas
           frameloop="demand"
-          shadows={false}
+          shadows
           dpr={isHighPerf ? [1, 1.5] : 1}
           gl={{
             antialias: true,
@@ -51,7 +54,7 @@ export function App() {
             stencil: false,
             alpha: false,
           }}
-          camera={{ position: [0, 34, 35], fov: 38, near: 0.1, far: 300 }}
+          camera={{ position: [0, 34, 35], fov: 38, near: 1.5, far: 320 }}
           onCreated={({ gl }) => {
             setSceneReady(true);
             if (import.meta.env.DEV && typeof window !== 'undefined') {

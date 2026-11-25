@@ -56,6 +56,9 @@ const SHARED_SMD_BEZEL_MAT = new THREE.MeshBasicMaterial({ color: '#0f172a' });
 const SHARED_LIVE_COLOR_MAT = new THREE.MeshBasicMaterial({
   color: '#ffffff',
   toneMapped: false,
+  polygonOffset: true,
+  polygonOffsetFactor: -1,
+  polygonOffsetUnits: -1,
 });
 
 const COLOR_LED_HIGH = new THREE.Color('#22c55e');

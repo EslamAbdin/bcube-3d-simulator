@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
@@ -64,6 +64,24 @@ export const DipICChip = memo(function DipICChip({
   const topTex = useCanvasTexture(() => createIcTopTexture(label), [label]);
   const pinMat = dimmed ? SHARED_PIN_MAT_DIMMED : SHARED_PIN_MAT_ACTIVE;
   const bodyMat = dimmed ? SHARED_BODY_MAT_DIMMED : SHARED_BODY_MAT_ACTIVE;
+
+  const icMaterials = useMemo(() => {
+    const topLabelMat = new THREE.MeshStandardMaterial({
+      map: topTex,
+      roughness: 0.5,
+      metalness: 0.1,
+    });
+    return {
+      topLabelMat,
+      array: [bodyMat, bodyMat, topLabelMat, bodyMat, bodyMat, bodyMat] as THREE.Material[],
+    };
+  }, [bodyMat, topTex]);
+
+  useEffect(() => {
+    return () => {
+      icMaterials.topLabelMat.dispose();
+    };
+  }, [icMaterials]);
 
   useEffect(() => {
     return () => {
@@ -139,10 +157,11 @@ export const DipICChip = memo(function DipICChip({
 
   return (
     <group position={position} name={`dip-ic-${label}`}>
-      {/* Matte black epoxy body */}
+      {/* Matte black epoxy body with laser-etched label mapped directly to +Y top face (index 2) */}
       <mesh
         position={[0, bodyCenterY, 0]}
-        material={bodyMat}
+        material={icMaterials.array}
+        castShadow
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
         onClick={handleClick}
@@ -152,26 +171,14 @@ export const DipICChip = memo(function DipICChip({
 
       {/* Left-side orientation notch */}
       <mesh
-        position={[-length / 2 + 0.045, bodyTopY + 0.001, 0]}
+        position={[-length / 2 + 0.045, bodyTopY + 0.002, 0]}
         geometry={SHARED_NOTCH_GEO}
         material={SHARED_NOTCH_MAT}
       />
 
-      {/* Top laser-etched IC code */}
-      <mesh
-        position={[0, bodyTopY + 0.002, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        onPointerOver={handlePointerOver}
-        onPointerOut={handlePointerOut}
-        onClick={handleClick}
-      >
-        <planeGeometry args={[length * 0.88, width * 0.84]} />
-        <meshStandardMaterial map={topTex} roughness={0.5} metalness={0.1} />
-      </mesh>
-
       {/* Crisp hover highlight perimeter (mounted only while hovered) */}
       {hovered && onInspect && (
-        <mesh position={[0, bodyTopY + 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, bodyTopY + 0.025, 0]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={2}>
           <planeGeometry args={[length + 0.08, width + 0.08]} />
           <meshBasicMaterial
             color="#38bdf8"
@@ -179,6 +186,9 @@ export const DipICChip = memo(function DipICChip({
             opacity={0.28}
             toneMapped={false}
             depthWrite={false}
+            polygonOffset
+            polygonOffsetFactor={-2}
+            polygonOffsetUnits={-2}
           />
         </mesh>
       )}

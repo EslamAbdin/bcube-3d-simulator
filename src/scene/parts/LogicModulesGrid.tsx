@@ -1,4 +1,4 @@
-import { memo, useLayoutEffect, useMemo, useRef } from 'react';
+import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import {
   ALL_MODULES,
@@ -28,7 +28,6 @@ const ACTIVE_IC_CODES: Record<ActiveGateModuleType, string> = {
 const { width: DAUGHTER_W, depth: DAUGHTER_D, thickness: DAUGHTER_T } = BOARD_DIMENSIONS.daughterModule;
 
 const SHARED_DAUGHTER_PCB_GEO = new THREE.BoxGeometry(DAUGHTER_W, DAUGHTER_T, DAUGHTER_D);
-const SHARED_DAUGHTER_PLANE_GEO = new THREE.PlaneGeometry(DAUGHTER_W, DAUGHTER_D);
 const SHARED_COL0_PLANE_GEO = new THREE.PlaneGeometry(5.2, 3.92);
 const SHARED_ACTIVE_SLAB_MAT = new THREE.MeshStandardMaterial({
   color: '#0a598c',
@@ -59,18 +58,64 @@ const ActiveGateModuleCard = memo(function ActiveGateModuleCard({
   const tex = useCanvasTexture(() => createActiveGateModuleTexture(mod), [mod]);
   const layout = getGateModuleLayout(mod);
   const gType = mod.type as ActiveGateModuleType;
-  const planeGeo = mod.isDaughterModule ? SHARED_DAUGHTER_PLANE_GEO : SHARED_COL0_PLANE_GEO;
+
+  const daughterMaterials = useMemo(() => {
+    if (!mod.isDaughterModule) return null;
+    const topMat = new THREE.MeshStandardMaterial({
+      map: tex,
+      roughness: 0.55,
+      metalness: 0.03,
+    });
+    return {
+      topMat,
+      array: [
+        SHARED_ACTIVE_SLAB_MAT,
+        SHARED_ACTIVE_SLAB_MAT,
+        topMat,
+        SHARED_ACTIVE_SLAB_MAT,
+        SHARED_ACTIVE_SLAB_MAT,
+        SHARED_ACTIVE_SLAB_MAT,
+      ] as THREE.Material[],
+    };
+  }, [mod.isDaughterModule, tex]);
+
+  useEffect(() => {
+    return () => {
+      daughterMaterials?.topMat.dispose();
+    };
+  }, [daughterMaterials]);
+
+  const slabCenterY = BOARD_DIMENSIONS.daughterModule.pcbBottomY + DAUGHTER_T / 2;
 
   return (
     <group name={`active-module-${mod.id}`}>
-      {/* High-DPI 512×512 Silkscreen & IEEE Gate Symbols */}
-      <mesh
-        position={[mod.position.x, layout.surfaceY, mod.position.z]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        geometry={planeGeo}
-      >
-        <meshStandardMaterial map={tex} roughness={0.55} metalness={0.03} />
-      </mesh>
+      {mod.isDaughterModule && daughterMaterials ? (
+        /* Daughter PCB box with silkscreen mapped directly to +Y top face (index 2 — zero Z-fighting) */
+        <mesh
+          position={[mod.position.x, slabCenterY, mod.position.z]}
+          geometry={SHARED_DAUGHTER_PCB_GEO}
+          material={daughterMaterials.array}
+          castShadow
+          receiveShadow
+        />
+      ) : (
+        /* Built-in Column 0 silkscreen elevated >= 0.025 units with polygonOffset (zero Z-fighting) */
+        <mesh
+          position={[mod.position.x, layout.surfaceY, mod.position.z]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          geometry={SHARED_COL0_PLANE_GEO}
+          receiveShadow
+        >
+          <meshStandardMaterial
+            map={tex}
+            roughness={0.55}
+            metalness={0.03}
+            polygonOffset
+            polygonOffsetFactor={-2}
+            polygonOffsetUnits={-2}
+          />
+        </mesh>
+      )}
 
       {/* DIP-14 IC mounted at TOP CENTER directly beneath the module title (click to inspect schematic & equation) */}
       <DipICChip
@@ -107,7 +152,6 @@ export const LogicModulesGrid = memo(function LogicModulesGrid() {
     [activeGateModules]
   );
 
-  const activeSlabRef = useRef<THREE.InstancedMesh>(null);
   const standoffRef = useRef<THREE.InstancedMesh>(null);
   const postRef = useRef<THREE.InstancedMesh>(null);
   const boreRef = useRef<THREE.InstancedMesh>(null);
@@ -118,18 +162,6 @@ export const LogicModulesGrid = memo(function LogicModulesGrid() {
     if (activeDaughterCards.length === 0) return;
 
     const dummy = new THREE.Object3D();
-    const slabY = BOARD_DIMENSIONS.daughterModule.pcbBottomY + DAUGHTER_T / 2;
-
-    if (activeSlabRef.current) {
-      activeDaughterCards.forEach((mod, idx) => {
-        dummy.position.set(mod.position.x, slabY, mod.position.z);
-        dummy.rotation.set(0, 0, 0);
-        dummy.updateMatrix();
-        activeSlabRef.current!.setMatrixAt(idx, dummy.matrix);
-      });
-      activeSlabRef.current.instanceMatrix.needsUpdate = true;
-    }
-
     const standoffs = standoffRef.current;
     const posts = postRef.current;
     const bores = boreRef.current;
@@ -177,10 +209,6 @@ export const LogicModulesGrid = memo(function LogicModulesGrid() {
     <group name="logic-modules-grid">
       {activeDaughterCards.length > 0 && (
         <>
-          <instancedMesh
-            ref={activeSlabRef}
-            args={[SHARED_DAUGHTER_PCB_GEO, SHARED_ACTIVE_SLAB_MAT, activeDaughterCards.length]}
-          />
           <instancedMesh
             ref={standoffRef}
             args={[SHARED_BRASS_STANDOFF_GEO, SHARED_BRASS_MAT, totalCorners]}

@@ -14,8 +14,7 @@ import { playButtonSnap, playSlideClick } from '../../utils/soundEffects';
 
 // Module-scoped shared geometries & invariant materials (never disposed on unmount)
 const INVISIBLE_HITBOX_MAT = new THREE.MeshBasicMaterial({
-  transparent: true,
-  opacity: 0,
+  colorWrite: false,
   depthWrite: false,
 });
 
@@ -165,6 +164,7 @@ const InteractiveButtonSwitch = memo(function InteractiveButtonSwitch({
 
   const capGroupRef = useRef<THREE.Group>(null);
   const momentaryHeldRef = useRef(false);
+  const lastTouchTapRef = useRef(0);
   const invalidate = useThree((s) => s.invalidate);
 
   useEffect(() => {
@@ -226,6 +226,20 @@ const InteractiveButtonSwitch = memo(function InteractiveButtonSwitch({
         playButtonSnap(true, true);
       }
       return;
+    }
+
+    if (e.pointerType === 'touch') {
+      const now = performance.now();
+      if (now - lastTouchTapRef.current < 350) {
+        lastTouchTapRef.current = 0;
+        momentaryHeldRef.current = false;
+        state.toggleButtonLatch(btn.id);
+        if (state.soundEnabled) {
+          playButtonSnap(true, true);
+        }
+        return;
+      }
+      lastTouchTapRef.current = now;
     }
 
     momentaryHeldRef.current = true;
@@ -412,7 +426,7 @@ const ReactiveLed = memo(function ReactiveLed({
       {activeGlow && (
         <>
           {isHighPerf && (
-            <mesh position={[0, 0.24, 0]} geometry={LED_HALO_SPHERE_GEO}>
+            <mesh position={[0, 0.24, 0]} geometry={LED_HALO_SPHERE_GEO} renderOrder={2}>
               <meshBasicMaterial
                 ref={haloMatRef}
                 color={haloColor}
@@ -423,7 +437,12 @@ const ReactiveLed = memo(function ReactiveLed({
               />
             </mesh>
           )}
-          <mesh position={[0, 0.42, 0]} rotation={[-Math.PI / 2, 0, 0]} geometry={LED_HALO_DISC_GEO}>
+          <mesh
+            position={[0, 0.42, 0]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            geometry={LED_HALO_DISC_GEO}
+            renderOrder={2}
+          >
             <meshBasicMaterial
               ref={discHaloMatRef}
               color={haloColor}

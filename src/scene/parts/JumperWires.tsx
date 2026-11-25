@@ -4,9 +4,15 @@ import * as THREE from 'three';
 import type { WireSpec } from '../../engine/LogicEngine';
 import { SOCKET_MAP, type Vec3 } from '../../schema/boardSchema';
 import { useSimulatorStore } from '../../store/useSimulatorStore';
-import { playWireUnplug } from '../../utils/soundEffects';
+import { playWirePlug, playWireUnplug } from '../../utils/soundEffects';
+import {
+  TOUCH_CLICK_GUARD_MS,
+  TOUCH_SNAP_RADIUS,
+  findNearestActiveSocket,
+  touchWiringBridge,
+} from '../touchWiringBridge';
 
-// Shared static Dupont boot & collar assets (never disposed on unmount)
+// Shared static Dupont boot, collar, & invisible tracking plane assets (never disposed on unmount)
 const SHARED_BOOT_GEO = new THREE.CylinderGeometry(0.088, 0.088, 0.42, 12);
 const SHARED_COLLAR_GEO = new THREE.CylinderGeometry(0.068, 0.072, 0.05, 12);
 const SHARED_BOOT_MAT = new THREE.MeshStandardMaterial({
@@ -15,8 +21,7 @@ const SHARED_BOOT_MAT = new THREE.MeshStandardMaterial({
   metalness: 0.15,
 });
 const SHARED_GHOST_TRACK_MAT = new THREE.MeshBasicMaterial({
-  transparent: true,
-  opacity: 0,
+  colorWrite: false,
   depthWrite: false,
 });
 
@@ -71,14 +76,36 @@ const SeatedWire = memo(function SeatedWire({
   const teachingMode = useSimulatorStore((s) => s.teachingMode);
   const showElectricity = signalFlowEnabled || teachingMode;
   const wireSignal = useSimulatorStore((s) => s.socketStates[wire.fromSocketId] ?? 'FLOATING');
+  const errorWarningsEnabled = useSimulatorStore((s) => s.errorWarningsEnabled);
+
+  // Granular primitive ERC status selector per wire (does not rebuild TubeGeometry)
+  const ercSeverity = useSimulatorStore<'error' | 'warning' | null>((s) => {
+    if (!s.errorWarningsEnabled) return null;
+    let found: 'error' | 'warning' | null = null;
+    for (const d of s.wiringDiagnostics) {
+      if (d.affectedWireIds.includes(wire.id)) {
+        if (d.severity === 'error') return 'error';
+        found = 'warning';
+      }
+    }
+    return found;
+  });
+
+  const isDiagHighlighted = useSimulatorStore((s) => {
+    if (!s.errorWarningsEnabled || !s.highlightedDiagnosticId) return false;
+    const match = s.wiringDiagnostics.find((d) => d.id === s.highlightedDiagnosticId);
+    return Boolean(match?.affectedWireIds.includes(wire.id));
+  });
+
   const invalidate = useThree((s) => s.invalidate);
 
   const fromSock = SOCKET_MAP[wire.fromSocketId];
   const toSock = SOCKET_MAP[wire.toSocketId];
 
+  const showErcHighlight = errorWarningsEnabled && (ercSeverity !== null || isDiagHighlighted);
   const showXrayHalo =
     showElectricity && (wireSignal === 'HIGH' || wireSignal === 'CONFLICT');
-  const needHalo = isSelected || showXrayHalo;
+  const needHalo = isSelected || showXrayHalo || (errorWarningsEnabled && (ercSeverity === 'error' || isDiagHighlighted));
 
   // Strictly memoize curve + primary TubeGeometry ONLY on endpoint geometry, wire ID & LOD quality
   const curve = useMemo(() => {
@@ -116,8 +143,11 @@ const SeatedWire = memo(function SeatedWire({
 
   useFrame(({ clock }) => {
     if (!tubeMatRef.current) return;
-    if (showElectricity && wireSignal === 'CONFLICT') {
-      tubeMatRef.current.emissiveIntensity = 1.45 + Math.sin(clock.elapsedTime * 12) * 0.75;
+    if ((showElectricity && wireSignal === 'CONFLICT') || (showErcHighlight && ercSeverity === 'error')) {
+      tubeMatRef.current.emissiveIntensity = 1.4 + Math.sin(clock.elapsedTime * 11) * 0.7;
+      invalidate();
+    } else if (showErcHighlight && isDiagHighlighted) {
+      tubeMatRef.current.emissiveIntensity = 1.15 + Math.sin(clock.elapsedTime * 8) * 0.55;
       invalidate();
     }
   });
@@ -166,6 +196,21 @@ const SeatedWire = memo(function SeatedWire({
     }
   }
 
+  // ERC Warning / Error visual emphasis (superseded by clean selection halo)
+  if (showErcHighlight && !isSelected) {
+    if (ercSeverity === 'error') {
+      matEmissive = '#ef4444';
+      matEmissiveIntensity = 1.5;
+      haloColor = '#ef4444';
+      haloOpacity = isDiagHighlighted ? 0.48 : 0.34;
+    } else if (ercSeverity === 'warning') {
+      matEmissive = '#f59e0b';
+      matEmissiveIntensity = isDiagHighlighted ? 1.25 : 0.65;
+      haloColor = '#f59e0b';
+      haloOpacity = isDiagHighlighted ? 0.4 : 0.24;
+    }
+  }
+
   useEffect(() => {
     if (tubeMatRef.current) {
       tubeMatRef.current.needsUpdate = true;
@@ -175,12 +220,14 @@ const SeatedWire = memo(function SeatedWire({
   if (!fromSock || !toSock || !tubeGeo) return null;
 
   const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
+    if (e.pointerType === 'touch') return;
     e.stopPropagation();
     setHovered(true);
     document.body.style.cursor = 'pointer';
   };
 
   const handlePointerOut = (e: ThreeEvent<PointerEvent>) => {
+    if (e.pointerType === 'touch') return;
     e.stopPropagation();
     setHovered(false);
     document.body.style.cursor = 'auto';
@@ -208,6 +255,7 @@ const SeatedWire = memo(function SeatedWire({
       {/* Insulated flexible wire arch */}
       <mesh
         geometry={tubeGeo}
+        castShadow={isHighPerf}
         onPointerOver={handlePointerOver}
         onPointerOut={handlePointerOut}
         onClick={handleClick}
@@ -225,9 +273,9 @@ const SeatedWire = memo(function SeatedWire({
         />
       </mesh>
 
-      {/* Translucent glowing selection or X-Ray HIGH/CONFLICT halo */}
+      {/* Translucent glowing selection, X-Ray, or ERC error halo */}
       {needHalo && haloGeo && (
-        <mesh geometry={haloGeo}>
+        <mesh geometry={haloGeo} renderOrder={2}>
           <meshBasicMaterial
             color={haloColor}
             transparent
@@ -244,6 +292,7 @@ const SeatedWire = memo(function SeatedWire({
             position={[0, 0.19, 0]}
             geometry={SHARED_BOOT_GEO}
             material={SHARED_BOOT_MAT}
+            castShadow={isHighPerf}
           />
           <mesh position={[0, 0.41, 0]} geometry={SHARED_COLLAR_GEO}>
             <meshStandardMaterial color={wire.color} roughness={0.4} metalness={0.1} />
@@ -283,6 +332,51 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
       currentGeoRef.current = null;
     };
   }, []);
+
+  // Touch drag-to-wire completion / tap-to-wire preservation on window pointerup
+  useEffect(() => {
+    const handleTouchEnd = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      if (e.pointerId !== touchWiringBridge.activeTouchDragPointerId) return;
+
+      touchWiringBridge.activeTouchDragPointerId = null;
+      touchWiringBridge.touchOriginSocketId = null;
+      touchWiringBridge.lastTouchHandledAt = performance.now();
+
+      const wasDragged = touchWiringBridge.touchDragMoved;
+      touchWiringBridge.touchDragMoved = false;
+
+      const store = useSimulatorStore.getState();
+      if (e.type === 'pointercancel') {
+        store.cancelWiring();
+        store.setHoveredSocketId(null);
+        return;
+      }
+
+      const snapTarget = store.hoveredSocketId;
+      if (snapTarget && snapTarget !== pendingSocketId) {
+        const res = store.completeWiring(snapTarget);
+        store.setHoveredSocketId(null);
+        if (res.ok && store.soundEnabled) {
+          playWirePlug();
+        }
+        return;
+      }
+
+      if (wasDragged) {
+        store.cancelWiring();
+        store.setHoveredSocketId(null);
+      }
+      // If lifted on origin without dragging away, leave pendingSocketId latched for tap-to-wire!
+    };
+
+    window.addEventListener('pointerup', handleTouchEnd, true);
+    window.addEventListener('pointercancel', handleTouchEnd, true);
+    return () => {
+      window.removeEventListener('pointerup', handleTouchEnd, true);
+      window.removeEventListener('pointercancel', handleTouchEnd, true);
+    };
+  }, [pendingSocketId]);
 
   useFrame(() => {
     if (!originSock || !tubeMeshRef.current) return;
@@ -340,7 +434,7 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
       </mesh>
 
       {/* Translucent glowing ghost wire arch */}
-      <mesh ref={tubeMeshRef}>
+      <mesh ref={tubeMeshRef} renderOrder={2}>
         <bufferGeometry />
         <meshBasicMaterial
           color={activeWireColor}
@@ -358,9 +452,36 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
         material={SHARED_GHOST_TRACK_MAT}
         onPointerMove={(e) => {
           pointerTargetRef.current.set(e.point.x, 0.28, e.point.z);
+          if (
+            e.pointerType === 'touch' &&
+            touchWiringBridge.activeTouchDragPointerId === e.pointerId
+          ) {
+            const distFromOrigin = Math.hypot(
+              e.point.x - originSock.position.x,
+              e.point.z - originSock.position.z
+            );
+            if (distFromOrigin > 0.26) {
+              touchWiringBridge.touchDragMoved = true;
+            }
+            const nearest = findNearestActiveSocket(
+              e.point.x,
+              e.point.z,
+              TOUCH_SNAP_RADIUS,
+              pendingSocketId
+            );
+            const store = useSimulatorStore.getState();
+            const nextId = nearest ? nearest.id : null;
+            if (store.hoveredSocketId !== nextId) {
+              store.setHoveredSocketId(nextId);
+            }
+          }
           invalidate();
         }}
         onClick={(e) => {
+          if (performance.now() - touchWiringBridge.lastTouchHandledAt < TOUCH_CLICK_GUARD_MS) {
+            e.stopPropagation();
+            return;
+          }
           if (e.delta > 8) return;
           e.stopPropagation();
           useSimulatorStore.getState().cancelWiring();
@@ -379,7 +500,7 @@ const GhostPreviewWire = memo(function GhostPreviewWire({
 
 /**
  * Renders all seated 3D CatmullRom jumper wires with Dupont boots,
- * live magnetic ghost preview wire, and Esc / Delete / Ctrl+Z / Right-Click shortcuts.
+ * ERC diagnostic error/warning highlights, magnetic ghost preview, and shortcuts.
  */
 export const JumperWires = memo(function JumperWires() {
   const wires = useSimulatorStore((s) => s.wires);

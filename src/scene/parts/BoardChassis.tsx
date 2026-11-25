@@ -5,13 +5,32 @@ import { useSimulatorStore } from '../../store/useSimulatorStore';
 import { createMainBoardTexture, useCanvasTexture } from '../textures/silkscreenGenerator';
 
 /**
- * Main 440mm × 290mm × 4mm blue solder-mask PCB with top silkscreen plane,
+ * Main 440mm × 290mm × 4mm blue solder-mask PCB with top silkscreen applied directly
+ * to the +Y top face (index 2 of BoxGeometry materials — zero Z-fighting),
  * protective dark-slate metallic perimeter bezel, bottom tray, and corner screws.
  */
 export const BoardChassis = memo(function BoardChassis() {
   const mainTex = useCanvasTexture(createMainBoardTexture, []);
   const screwRef = useRef<THREE.InstancedMesh>(null);
   const footRef = useRef<THREE.InstancedMesh>(null);
+
+  const pcbMaterials = useMemo(() => {
+    const sideMat = new THREE.MeshStandardMaterial({
+      color: '#0a598c',
+      roughness: 0.55,
+      metalness: 0.05,
+    });
+    const topMat = new THREE.MeshStandardMaterial({
+      map: mainTex,
+      roughness: 0.55,
+      metalness: 0.03,
+    });
+    return {
+      sideMat,
+      topMat,
+      array: [sideMat, sideMat, topMat, sideMat, sideMat, sideMat] as THREE.Material[],
+    };
+  }, [mainTex]);
 
   const screwGeo = useMemo(() => new THREE.CylinderGeometry(0.18, 0.18, 0.05, 16), []);
   const screwMat = useMemo(
@@ -33,6 +52,13 @@ export const BoardChassis = memo(function BoardChassis() {
       }),
     []
   );
+
+  useEffect(() => {
+    return () => {
+      pcbMaterials.sideMat.dispose();
+      pcbMaterials.topMat.dispose();
+    };
+  }, [pcbMaterials]);
 
   useEffect(() => {
     return () => {
@@ -78,16 +104,11 @@ export const BoardChassis = memo(function BoardChassis() {
 
   return (
     <group name="board-chassis">
-      {/* Main 44 × 0.4 × 29 PCB slab (top surface strictly at Y = 0.00) */}
-      <mesh position={[0, -thickness / 2, 0]}>
-        <boxGeometry args={[width, thickness, depth]} />
-        <meshStandardMaterial color="#0a598c" roughness={0.55} metalness={0.05} />
-      </mesh>
-
-      {/* Main silkscreen top plane at Y = 0.004 */}
+      {/* Main 44 × 0.4 × 29 PCB slab (top surface at Y = 0.00, silkscreen directly on face +Y) */}
       <mesh
-        position={[0, 0.004, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
+        position={[0, -thickness / 2, 0]}
+        material={pcbMaterials.array}
+        receiveShadow
         onClick={(e) => {
           if (e.delta > 5) return;
           const store = useSimulatorStore.getState();
@@ -97,34 +118,33 @@ export const BoardChassis = memo(function BoardChassis() {
           }
         }}
       >
-        <planeGeometry args={[width, depth]} />
-        <meshStandardMaterial map={mainTex} roughness={0.55} metalness={0.03} />
+        <boxGeometry args={[width, thickness, depth]} />
       </mesh>
 
       {/* Protective metallic dark-slate perimeter bezel rails */}
       <group name="bezel-frame">
         {/* Top rail */}
-        <mesh position={[0, -0.22, -depth / 2 - railThickness / 2]}>
+        <mesh position={[0, -0.22, -depth / 2 - railThickness / 2]} castShadow receiveShadow>
           <boxGeometry args={[bezelOuterW, 0.56, railThickness]} />
           <meshStandardMaterial color="#1e293b" roughness={0.38} metalness={0.6} />
         </mesh>
         {/* Bottom rail */}
-        <mesh position={[0, -0.22, depth / 2 + railThickness / 2]}>
+        <mesh position={[0, -0.22, depth / 2 + railThickness / 2]} castShadow receiveShadow>
           <boxGeometry args={[bezelOuterW, 0.56, railThickness]} />
           <meshStandardMaterial color="#1e293b" roughness={0.38} metalness={0.6} />
         </mesh>
         {/* Left rail */}
-        <mesh position={[-width / 2 - railThickness / 2, -0.22, 0]}>
+        <mesh position={[-width / 2 - railThickness / 2, -0.22, 0]} castShadow receiveShadow>
           <boxGeometry args={[railThickness, 0.56, depth]} />
           <meshStandardMaterial color="#1e293b" roughness={0.38} metalness={0.6} />
         </mesh>
         {/* Right rail */}
-        <mesh position={[width / 2 + railThickness / 2, -0.22, 0]}>
+        <mesh position={[width / 2 + railThickness / 2, -0.22, 0]} castShadow receiveShadow>
           <boxGeometry args={[railThickness, 0.56, depth]} />
           <meshStandardMaterial color="#1e293b" roughness={0.38} metalness={0.6} />
         </mesh>
         {/* Bottom chassis base plate */}
-        <mesh position={[0, -0.45, 0]}>
+        <mesh position={[0, -0.45, 0]} receiveShadow>
           <boxGeometry args={[bezelOuterW - 0.2, 0.1, bezelOuterD - 0.2]} />
           <meshStandardMaterial color="#0f172a" roughness={0.6} metalness={0.4} />
         </mesh>
