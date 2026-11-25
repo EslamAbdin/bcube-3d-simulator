@@ -15,6 +15,7 @@ export const TopHud = memo(function TopHud() {
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const wireCount = useSimulatorStore((s) => s.wires.length);
   const activeWireColor = useSimulatorStore((s) => s.activeWireColor);
@@ -58,6 +59,52 @@ export const TopHud = memo(function TopHud() {
     s.wiringDiagnostics.reduce((acc, d) => (d.severity === 'error' ? acc + 1 : acc), 0)
   );
   const ercTotalCount = useSimulatorStore((s) => s.wiringDiagnostics.length);
+
+  useEffect(() => {
+    const syncFs = () => {
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      setIsFullscreen(Boolean(doc.fullscreenElement || doc.webkitFullscreenElement));
+    };
+    syncFs();
+    document.addEventListener('fullscreenchange', syncFs);
+    document.addEventListener('webkitfullscreenchange', syncFs);
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFs);
+      document.removeEventListener('webkitfullscreenchange', syncFs);
+    };
+  }, []);
+
+  const handleToggleFullscreen = async () => {
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+    const el = document.documentElement as HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+    const active = Boolean(doc.fullscreenElement || doc.webkitFullscreenElement);
+
+    try {
+      if (active) {
+        if (doc.exitFullscreen) await doc.exitFullscreen();
+        else if (doc.webkitExitFullscreen) await doc.webkitExitFullscreen();
+      } else {
+        if (el.requestFullscreen) {
+          try {
+            await el.requestFullscreen({ navigationUI: 'hide' });
+          } catch {
+            await el.requestFullscreen();
+          }
+        } else if (el.webkitRequestFullscreen) {
+          await el.webkitRequestFullscreen();
+        } else {
+          showToast('For iPhone fullscreen, tap Share → Add to Home Screen.', 'info');
+        }
+      }
+    } catch {
+      showToast('For iPhone fullscreen, tap Share → Add to Home Screen.', 'info');
+    }
+  };
 
   useEffect(() => {
     if (!fileMenuOpen && !mobileMenuOpen) return;
@@ -273,6 +320,21 @@ export const TopHud = memo(function TopHud() {
                   {ercTotalCount}
                 </span>
               )}
+            </button>
+
+            <button
+              type="button"
+              onClick={handleToggleFullscreen}
+              aria-pressed={isFullscreen}
+              aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter immersive fullscreen'}
+              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen (hide browser & nav bars)'}
+              className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md border text-xs font-bold transition-colors ${
+                isFullscreen
+                  ? 'border-sky-400/75 bg-sky-500/25 text-sky-200'
+                  : 'border-slate-700/80 bg-slate-800/80 text-slate-200'
+              }`}
+            >
+              {isFullscreen ? '⤢' : '⛶'}
             </button>
 
             <button
@@ -493,6 +555,21 @@ export const TopHud = memo(function TopHud() {
                 Help
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                handleToggleFullscreen();
+                setMobileMenuOpen(false);
+              }}
+              className={`cursor-pointer rounded-lg border px-2 py-1.5 text-[11px] font-semibold ${
+                isFullscreen
+                  ? 'border-sky-400/70 bg-sky-500/20 text-sky-200'
+                  : 'border-slate-700/80 bg-slate-800/80 text-slate-200'
+              }`}
+            >
+              {isFullscreen ? 'Exit Fullscreen' : '⛶ Immersive Fullscreen (Hide Bars)'}
+            </button>
 
             <div className="grid grid-cols-2 gap-1.5 border-t border-slate-800 pt-2">
               <button
@@ -851,6 +928,21 @@ export const TopHud = memo(function TopHud() {
                 </>
               )}
             </svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleToggleFullscreen}
+            aria-pressed={isFullscreen}
+            aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
+            title={isFullscreen ? 'Exit Fullscreen (Esc)' : 'Fullscreen mode'}
+            className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg border text-xs font-bold transition-colors ${
+              isFullscreen
+                ? 'border-sky-400/70 bg-sky-500/25 text-sky-200'
+                : 'border-slate-700/80 bg-slate-800/80 text-slate-200 hover:border-slate-500 hover:text-white'
+            }`}
+          >
+            {isFullscreen ? '⤢' : '⛶'}
           </button>
 
           <button

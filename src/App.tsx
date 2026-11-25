@@ -39,7 +39,7 @@ export function App() {
   }, []);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-slate-950 select-none">
+    <div className="relative h-[100dvh] w-screen overflow-hidden bg-slate-950 select-none">
       <div
         className="h-full w-full touch-none select-none"
         onContextMenu={(e) => e.preventDefault()}
