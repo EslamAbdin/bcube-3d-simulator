@@ -1,4 +1,5 @@
-import { useEffect, useRef, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { SOCKET_MAP } from '../schema/boardSchema';
 import { useSimulatorStore } from '../store/useSimulatorStore';
 import { playWirePlug } from '../utils/soundEffects';
@@ -13,10 +14,17 @@ export function WireWarningModal() {
   const dismissPendingWireWarning = useSimulatorStore((s) => s.dismissPendingWireWarning);
   const teachingLang = useSimulatorStore((s) => s.teachingLang);
   const openedAtRef = useRef<number>(0);
+  const [canInteract, setCanInteract] = useState(false);
 
   useEffect(() => {
-    if (!pendingWireWarning) return;
+    if (!pendingWireWarning) {
+      setCanInteract(false);
+      return;
+    }
     openedAtRef.current = performance.now();
+    setCanInteract(false);
+    const settleTimer = window.setTimeout(() => setCanInteract(true), 300);
+
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
@@ -24,24 +32,35 @@ export function WireWarningModal() {
       }
     };
     window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
+    return () => {
+      window.clearTimeout(settleTimer);
+      window.removeEventListener('keydown', onKeyDown, true);
+    };
   }, [pendingWireWarning, dismissPendingWireWarning]);
 
-  if (!pendingWireWarning) return null;
+  if (!pendingWireWarning || typeof document === 'undefined') return null;
 
   const isArabic = teachingLang === 'ar';
-  const fromLabel = SOCKET_MAP[pendingWireWarning.fromSocketId]?.tooltip ?? pendingWireWarning.fromSocketId;
-  const toLabel = SOCKET_MAP[pendingWireWarning.toSocketId]?.tooltip ?? pendingWireWarning.toSocketId;
+  const fromLabel =
+    SOCKET_MAP[pendingWireWarning.fromSocketId]?.tooltip ?? pendingWireWarning.fromSocketId;
+  const toLabel =
+    SOCKET_MAP[pendingWireWarning.toSocketId]?.tooltip ?? pendingWireWarning.toSocketId;
   const hasError = pendingWireWarning.diagnostics.some((d) => d.severity === 'error');
 
+  const isGuarded = () => !canInteract || performance.now() - openedAtRef.current < 320;
+
   const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
-    if (e.target !== e.currentTarget) return;
-    // Mobile browsers fire a trailing synthetic click after touchend mounts the backdrop.
-    if (performance.now() - openedAtRef.current < 400) return;
+    if (e.target !== e.currentTarget || isGuarded()) return;
+    dismissPendingWireWarning();
+  };
+
+  const handleDismiss = () => {
+    if (isGuarded()) return;
     dismissPendingWireWarning();
   };
 
   const handleIgnoreAndConnect = () => {
+    if (isGuarded()) return;
     const soundEnabled = useSimulatorStore.getState().soundEnabled;
     const ok = confirmPendingWireWarning();
     if (ok && soundEnabled) {
@@ -49,18 +68,20 @@ export function WireWarningModal() {
     }
   };
 
-  return (
+  return createPortal(
     <div
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="bcube-wire-warning-title"
       onClick={handleBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
+      className={`fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm ${
+        canInteract ? 'pointer-events-auto' : 'pointer-events-none'
+      }`}
     >
       <div
         dir={isArabic ? 'rtl' : 'ltr'}
         onClick={(e) => e.stopPropagation()}
-        className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700/85 bg-slate-900/95 p-4 text-slate-100 shadow-2xl sm:p-5"
+        className="max-h-[85vh] w-[92vw] max-w-md overflow-y-auto rounded-2xl border border-slate-700/85 bg-slate-900/95 p-4 text-slate-100 shadow-2xl sm:p-5"
       >
         <div className="flex items-start justify-between gap-2 border-b border-slate-800 pb-3">
           <div className="flex items-center gap-2">
@@ -82,7 +103,7 @@ export function WireWarningModal() {
           <button
             type="button"
             aria-label={isArabic ? 'إلغاء التوصيل' : 'Cancel connection'}
-            onClick={dismissPendingWireWarning}
+            onClick={handleDismiss}
             className="touch-manipulation cursor-pointer rounded-lg px-2 py-0.5 text-sm font-bold text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
           >
             ×
@@ -133,7 +154,7 @@ export function WireWarningModal() {
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
-            onClick={dismissPendingWireWarning}
+            onClick={handleDismiss}
             className="touch-manipulation cursor-pointer rounded-xl border border-slate-600/80 bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-100 transition-colors hover:bg-slate-700"
           >
             {isArabic ? 'إلغاء' : 'Cancel'}
@@ -151,6 +172,7 @@ export function WireWarningModal() {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

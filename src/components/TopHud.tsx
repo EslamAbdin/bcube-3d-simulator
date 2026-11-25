@@ -319,7 +319,7 @@ export const TopHud = memo(function TopHud() {
               aria-label="Toggle ERC wiring error warnings"
               className={`flex cursor-pointer items-center gap-1 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[11px] font-semibold transition-colors ${ercPillTone}`}
             >
-              <span>ERC</span>
+              <span>ERC:{errorWarningsEnabled ? 'ON' : 'OFF'}</span>
               {errorWarningsEnabled && ercTotalCount > 0 && (
                 <span
                   className={`rounded-full px-1 text-[10px] font-bold ${

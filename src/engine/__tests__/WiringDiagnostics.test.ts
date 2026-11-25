@@ -183,6 +183,25 @@ describe('wiringDiagnostics (ERC)', () => {
     );
     store.dismissPendingWireWarning();
 
+    // Calling startWiring while pendingWireWarning is open must NOT wipe the warning
+    store.startWiring('IC_7408:PIN3:A');
+    store.completeWiring('IC_7432:PIN3:A');
+    expect(useSimulatorStore.getState().pendingWireWarning).not.toBeNull();
+    store.startWiring('SLIDE_SWITCH:SW1:B');
+    expect(useSimulatorStore.getState().pendingWireWarning?.diagnostics[0].code).toBe(
+      'OUTPUT_TO_OUTPUT'
+    );
+    store.dismissPendingWireWarning();
+
+    // Shorting two inputs of a clean 2-input AND gate (7408 Gate 2: Pin 4 -> Pin 5) triggers warning first
+    store.startWiring('IC_7408:PIN4:A');
+    const sameGateRes = store.completeWiring('IC_7408:PIN5:A');
+    expect(sameGateRes).toEqual({ ok: false, reason: 'warning' });
+    expect(useSimulatorStore.getState().pendingWireWarning?.diagnostics[0].code).toBe(
+      'SAME_GATE_INPUTS_SHORTED'
+    );
+    store.dismissPendingWireWarning();
+
     // Turning ERC OFF skips the warning gate
     store.toggleErrorWarnings();
     store.startWiring('IC_7404:PIN2:A');

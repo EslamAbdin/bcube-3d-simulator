@@ -30,7 +30,7 @@ export type TouchTwoFingerMode = 'orbit' | 'pan';
 
 const PERF_MODE_STORAGE_KEY = 'bcube_perf_mode_v1';
 const TEACHING_LANG_STORAGE_KEY = 'bcube_teaching_lang_v1';
-const ERC_ENABLED_STORAGE_KEY = 'bcube_erc_enabled_v1';
+const ERC_ENABLED_STORAGE_KEY = 'bcube_erc_enabled_v2';
 
 function readInitialErcEnabled(): boolean {
   if (typeof window === 'undefined') return true;
@@ -453,8 +453,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
   },
 
   startWiring: (socketId) => {
-    if (!SOCKET_MAP[socketId]) return;
-    set({ pendingSocketId: socketId, selectedWireId: null, pendingWireWarning: null });
+    if (!SOCKET_MAP[socketId] || get().pendingWireWarning) return;
+    set({ pendingSocketId: socketId, selectedWireId: null });
   },
 
   cancelWiring: () => {
@@ -676,10 +676,22 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => ({
     set((s) => {
       const next = !s.errorWarningsEnabled;
       persistErcEnabled(next);
+      const isAr = s.teachingLang === 'ar';
       return {
         errorWarningsEnabled: next,
         highlightedDiagnosticId: next ? s.highlightedDiagnosticId : null,
         pendingWireWarning: next ? s.pendingWireWarning : null,
+        statusToast: {
+          id: toastCounter++,
+          message: next
+            ? isAr
+              ? 'تم تفعيل فحص الأخطاء المنطقية (ERC: ON)'
+              : 'Wiring error warnings enabled (ERC: ON)'
+            : isAr
+              ? 'تم إيقاف فحص الأخطاء المنطقية (ERC: OFF)'
+              : 'Wiring error warnings disabled (ERC: OFF)',
+          kind: next ? 'info' : 'warning',
+        },
       };
     }),
 

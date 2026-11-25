@@ -19,6 +19,7 @@ export type DiagnosticCode =
   | 'OUTPUT_TO_OUTPUT'
   | 'MULTIPLE_SWITCHES_ON_NET'
   | 'SWITCH_TO_OUTPUT'
+  | 'SAME_GATE_INPUTS_SHORTED'
   | 'COMBINATIONAL_FEEDBACK_LOOP'
   | 'UNCONNECTED_GATE_INPUT'
   | 'UNDRIVEN_LED';
@@ -446,6 +447,39 @@ export function analyzeWiringErrors(
         affectedWireIds,
         affectedSocketIds,
       });
+    }
+  }
+
+  // Rule 5b — SAME_GATE_INPUTS_SHORTED (warning) for 2-input non-inverter gates (7408 AND, 7432 OR, 7486 XOR)
+  for (const rec of gateNodes) {
+    if (
+      (rec.mod.type === 'IC_7408' || rec.mod.type === 'IC_7432' || rec.mod.type === 'IC_7486') &&
+      rec.inRoots.length === 2 &&
+      rec.inRoots[0].root === rec.inRoots[1].root
+    ) {
+      const sharedRoot = rec.inRoots[0].root;
+      const sharedWires = netWiresByRoot[sharedRoot] ?? [];
+      if (sharedWires.length > 0) {
+        const behaviorHint =
+          rec.mod.type === 'IC_7486'
+            ? 'X ⊕ X is always 0 (LOW)'
+            : rec.mod.type === 'IC_7408'
+              ? 'X · X simplifies trivially to X'
+              : 'X + X simplifies trivially to X';
+        pushDiag({
+          id: `SAME_GATE_INPUTS_SHORTED:${rec.gateKey}`,
+          code: 'SAME_GATE_INPUTS_SHORTED',
+          severity: 'warning',
+          title: 'Same Gate Inputs Shorted Together',
+          message: `${rec.mod.shortLabel} Gate ${rec.gate.gateIndex} inputs (Pin ${rec.inRoots[0].pin} and Pin ${rec.inRoots[1].pin}) are wired to the same net — ${behaviorHint}.`,
+          affectedWireIds: sharedWires.map((w) => w.id),
+          affectedSocketIds: uniq([
+            rec.inRoots[0].sockId,
+            rec.inRoots[1].sockId,
+            ...sharedWires.flatMap((w) => [w.fromSocketId, w.toSocketId]),
+          ]),
+        });
+      }
     }
   }
 

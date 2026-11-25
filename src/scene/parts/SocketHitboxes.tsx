@@ -58,6 +58,7 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
   const colliderRef = useRef<THREE.InstancedMesh>(null);
   const primaryRingRef = useRef<THREE.Mesh>(null);
   const originRingRef = useRef<THREE.Mesh>(null);
+  const touchTapTargetRef = useRef<{ pointerId: number; socketId: string } | null>(null);
 
   const hoveredSocketId = useSimulatorStore((s) => s.hoveredSocketId);
   const pendingSocketId = useSimulatorStore((s) => s.pendingSocketId);
@@ -79,6 +80,37 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
       document.body.style.cursor = 'auto';
     };
   }, [colliderGeo, colliderMat]);
+
+  // Complete 2nd touch tap on pointerup so Warning Modal never mounts underneath a pressed finger
+  useEffect(() => {
+    const onTouchTapEnd = (e: PointerEvent) => {
+      if (e.pointerType !== 'touch') return;
+      const target = touchTapTargetRef.current;
+      if (!target || e.pointerId !== target.pointerId) return;
+
+      touchTapTargetRef.current = null;
+      touchWiringBridge.lastTouchHandledAt = performance.now();
+
+      const store = useSimulatorStore.getState();
+      if (e.type === 'pointercancel' || store.pendingWireWarning) {
+        store.setHoveredSocketId(null);
+        return;
+      }
+
+      const res = store.completeWiring(target.socketId);
+      store.setHoveredSocketId(null);
+      if (res.ok && store.soundEnabled) {
+        playWirePlug();
+      }
+    };
+
+    window.addEventListener('pointerup', onTouchTapEnd, true);
+    window.addEventListener('pointercancel', onTouchTapEnd, true);
+    return () => {
+      window.removeEventListener('pointerup', onTouchTapEnd, true);
+      window.removeEventListener('pointercancel', onTouchTapEnd, true);
+    };
+  }, []);
 
   useLayoutEffect(() => {
     const mesh = colliderRef.current;
@@ -137,9 +169,13 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (e.pointerType !== 'touch') return;
     if (touchWiringBridge.activeTouchIds.size >= 2) return;
+    const store = useSimulatorStore.getState();
+    if (store.pendingWireWarning) {
+      e.stopPropagation();
+      return;
+    }
     e.stopPropagation();
 
-    const store = useSimulatorStore.getState();
     const picked =
       resolvePickedSocket(e, pairedSocketMap) ??
       findNearestActiveSocket(
@@ -165,18 +201,21 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
       store.pendingSocketId === picked.id ||
       SOCKET_MAP[store.pendingSocketId]?.nodeId === picked.nodeId
     ) {
+      touchTapTargetRef.current = null;
       store.cancelWiring();
       store.setHoveredSocketId(null);
     } else {
-      const res = store.completeWiring(picked.id);
-      store.setHoveredSocketId(null);
-      if (res.ok && store.soundEnabled) {
-        playWirePlug();
-      }
+      touchTapTargetRef.current = { pointerId: e.pointerId, socketId: picked.id };
+      store.setHoveredSocketId(picked.id);
     }
   };
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
+    const store = useSimulatorStore.getState();
+    if (store.pendingWireWarning) {
+      e.stopPropagation();
+      return;
+    }
     if (performance.now() - touchWiringBridge.lastTouchHandledAt < TOUCH_CLICK_GUARD_MS) {
       e.stopPropagation();
       return;
@@ -188,7 +227,6 @@ const ActiveSocketHitboxes = memo(function ActiveSocketHitboxes() {
     const picked = resolvePickedSocket(e, pairedSocketMap);
     if (!picked) return;
 
-    const store = useSimulatorStore.getState();
     if (!store.pendingSocketId) {
       store.startWiring(picked.id);
       if (store.soundEnabled) {
