@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, type MouseEvent } from 'react';
 import { SOCKET_MAP } from '../schema/boardSchema';
 import { useSimulatorStore } from '../store/useSimulatorStore';
 import { playWirePlug } from '../utils/soundEffects';
@@ -11,9 +11,12 @@ export function WireWarningModal() {
   const pendingWireWarning = useSimulatorStore((s) => s.pendingWireWarning);
   const confirmPendingWireWarning = useSimulatorStore((s) => s.confirmPendingWireWarning);
   const dismissPendingWireWarning = useSimulatorStore((s) => s.dismissPendingWireWarning);
+  const teachingLang = useSimulatorStore((s) => s.teachingLang);
+  const openedAtRef = useRef<number>(0);
 
   useEffect(() => {
     if (!pendingWireWarning) return;
+    openedAtRef.current = performance.now();
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
@@ -26,9 +29,17 @@ export function WireWarningModal() {
 
   if (!pendingWireWarning) return null;
 
+  const isArabic = teachingLang === 'ar';
   const fromLabel = SOCKET_MAP[pendingWireWarning.fromSocketId]?.tooltip ?? pendingWireWarning.fromSocketId;
   const toLabel = SOCKET_MAP[pendingWireWarning.toSocketId]?.tooltip ?? pendingWireWarning.toSocketId;
   const hasError = pendingWireWarning.diagnostics.some((d) => d.severity === 'error');
+
+  const handleBackdropClick = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
+    // Mobile browsers fire a trailing synthetic click after touchend mounts the backdrop.
+    if (performance.now() - openedAtRef.current < 400) return;
+    dismissPendingWireWarning();
+  };
 
   const handleIgnoreAndConnect = () => {
     const soundEnabled = useSimulatorStore.getState().soundEnabled;
@@ -43,10 +54,11 @@ export function WireWarningModal() {
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="bcube-wire-warning-title"
-      onClick={dismissPendingWireWarning}
+      onClick={handleBackdropClick}
       className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
     >
       <div
+        dir={isArabic ? 'rtl' : 'ltr'}
         onClick={(e) => e.stopPropagation()}
         className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-700/85 bg-slate-900/95 p-4 text-slate-100 shadow-2xl sm:p-5"
       >
@@ -58,24 +70,36 @@ export function WireWarningModal() {
               }`}
             />
             <h2 id="bcube-wire-warning-title" className="text-sm font-bold text-white sm:text-base">
-              {hasError ? 'Wiring Error Warning' : 'Logic Connection Warning'}
+              {hasError
+                ? isArabic
+                  ? 'تحذير خطأ في التوصيل'
+                  : 'Wiring Error Warning'
+                : isArabic
+                  ? 'تحذير منطقي في التوصيل'
+                  : 'Logic Connection Warning'}
             </h2>
           </div>
           <button
             type="button"
-            aria-label="Cancel connection"
+            aria-label={isArabic ? 'إلغاء التوصيل' : 'Cancel connection'}
             onClick={dismissPendingWireWarning}
-            className="cursor-pointer rounded-lg px-2 py-0.5 text-sm font-bold text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
+            className="touch-manipulation cursor-pointer rounded-lg px-2 py-0.5 text-sm font-bold text-slate-400 transition-colors hover:bg-slate-800 hover:text-white"
           >
             ×
           </button>
         </div>
 
         <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/70 px-3 py-2 text-xs">
-          <span className="text-slate-400">Proposed wire: </span>
-          <strong className="text-amber-200">{fromLabel}</strong>
+          <span className="text-slate-400">
+            {isArabic ? 'السلك المطلوب: ' : 'Proposed wire: '}
+          </span>
+          <strong className="text-amber-200" dir="ltr">
+            {fromLabel}
+          </strong>
           <span className="mx-1.5 text-slate-500">→</span>
-          <strong className="text-sky-300">{toLabel}</strong>
+          <strong className="text-sky-300" dir="ltr">
+            {toLabel}
+          </strong>
         </div>
 
         <div className="mt-3 flex flex-col gap-2">
@@ -96,7 +120,7 @@ export function WireWarningModal() {
                       isErr ? 'bg-rose-500 text-white' : 'bg-amber-400 text-slate-950'
                     }`}
                   >
-                    {isErr ? 'Error' : 'Warn'}
+                    {isErr ? (isArabic ? 'خطأ' : 'Error') : isArabic ? 'تحذير' : 'Warn'}
                   </span>
                   <span>{diag.title}</span>
                 </div>
@@ -110,20 +134,20 @@ export function WireWarningModal() {
           <button
             type="button"
             onClick={dismissPendingWireWarning}
-            className="cursor-pointer rounded-xl border border-slate-600/80 bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-100 transition-colors hover:bg-slate-700"
+            className="touch-manipulation cursor-pointer rounded-xl border border-slate-600/80 bg-slate-800 px-3.5 py-2 text-xs font-semibold text-slate-100 transition-colors hover:bg-slate-700"
           >
-            Cancel
+            {isArabic ? 'إلغاء' : 'Cancel'}
           </button>
           <button
             type="button"
             onClick={handleIgnoreAndConnect}
-            className={`cursor-pointer rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors ${
+            className={`touch-manipulation cursor-pointer rounded-xl border px-3.5 py-2 text-xs font-semibold transition-colors ${
               hasError
                 ? 'border-rose-400/70 bg-rose-500/25 text-rose-100 hover:bg-rose-500/40'
                 : 'border-amber-400/70 bg-amber-500/25 text-amber-100 hover:bg-amber-500/40'
             }`}
           >
-            Ignore &amp; Connect
+            {isArabic ? 'تجاهل ووصّل' : 'Ignore & Connect'}
           </button>
         </div>
       </div>

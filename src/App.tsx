@@ -99,6 +99,13 @@ export function App() {
       <HelpModal />
       <IcInspectorModal />
       <WireWarningModal />
+      <div
+        aria-label="App version"
+        title={`Built ${__BUILD_TIME__}`}
+        className="pointer-events-none fixed right-2 bottom-1.5 z-40 rounded-md border border-slate-700/75 bg-slate-950/75 px-1.5 py-0.5 font-mono text-[10px] font-semibold tracking-tight text-slate-300 backdrop-blur-sm"
+      >
+        v{__APP_VERSION__} · {__BUILD_SHA__}
+      </div>
     </div>
   );
 }
