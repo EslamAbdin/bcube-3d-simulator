@@ -302,6 +302,7 @@ export function CameraRig() {
       dampingFactor={0.08}
       enablePan
       enableZoom
+      zoomToCursor
       enableRotate={cameraMode === '3d'}
       minDistance={6}
       maxDistance={240}
